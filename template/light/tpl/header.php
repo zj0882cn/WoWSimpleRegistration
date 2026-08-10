@@ -85,6 +85,80 @@
             margin-bottom: 30px;
             font-size: 14px;
         }
+        /* One-Click Login */
+        .oneclick-section {
+            text-align: center;
+            padding: 10px 0 20px;
+        }
+        .oneclick-btn {
+            display: block;
+            width: 100%;
+            max-width: 360px;
+            margin: 0 auto 15px;
+            padding: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        .oneclick-btn:hover {
+            opacity: 0.92;
+        }
+        .oneclick-btn:active {
+            transform: scale(0.98);
+        }
+        .oneclick-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .oneclick-btn .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .oneclick-fallback-link {
+            display: inline-block;
+            color: var(--text-muted);
+            font-size: 13px;
+            text-decoration: none;
+            margin-top: 8px;
+            cursor: pointer;
+            border-bottom: 1px dashed var(--text-muted);
+        }
+        .oneclick-fallback-link:hover {
+            color: var(--brand-blue);
+            border-bottom-color: var(--brand-blue);
+        }
+        .oneclick-demo-input {
+            max-width: 360px;
+            margin: 15px auto;
+        }
+        .oneclick-demo-input .input-group {
+            margin-bottom: 10px;
+        }
+        .sms-fallback-form {
+            display: none;
+        }
+        .sms-fallback-form.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .account-info-card {
             background: #f8f9fa;
             border-radius: 10px;

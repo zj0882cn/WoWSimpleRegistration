@@ -1,10 +1,10 @@
 <?php
 /**
- * Main Template — Mobile Login Mode (Light Theme)
+ * Main Template — One-Click Login Mode (Light Theme)
  *
  * Homepage shows:
  *   1. Server status (online players, uptime, etc.) via SOAP
- *   2. Phone number + SMS code login form (or account info if logged in)
+ *   2. One-click login (mobile) or QR code scan (PC)
  *   3. Connection guide & contact tabs
  *
  * @author Amin Mahmoudi (MasterkinG)
@@ -24,6 +24,15 @@ if ($newAccount) {
 // Get server status via SOAP
 $serverStatus = MobileAuth::getServerStatus();
 $serverOnline = $serverStatus !== false;
+
+// Detect mobile device
+$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+$isMobile = (bool)preg_match('/Android|iPhone|iPad|iPod|Windows Phone|Mobile/i', $userAgent);
+
+// Get one-click login provider config
+$oneclickProvider = get_config('numberauth_provider') ?: 'demo';
+$oneclickAppKey   = get_config('numberauth_aliyun_appkey') ?: '';
+$siteUrl          = get_config('baseurl') ?: '';
 ?>
 
 <div class="row">
@@ -202,66 +211,72 @@ $serverOnline = $serverStatus !== false;
                         </div>
 
                     <?php else: ?>
-                        <!-- ===== Not Logged In: Show Phone Login Form ===== -->
+                        <!-- ===== Not Logged In: One-Click Login ===== -->
                         <div class="mobile-login-section">
+
+                        <?php if ($isMobile): ?>
+                            <!-- ===== Mobile: One-Click Login ===== -->
                             <h3>
-                                <i class="fas fa-mobile-alt" style="color: var(--brand-blue);"></i>
-                                <?= lang('mobile_login_title') ?: '手机号登录' ?>
+                                <i class="fas fa-bolt" style="color: var(--brand-blue);"></i>
+                                <?= lang('oneclick_login_title') ?: '本机号码一键登录' ?>
                             </h3>
                             <p>
-                                <?= lang('mobile_login_hint') ?: '输入手机号获取验证码，首次登录将自动创建游戏账号。' ?>
+                                <?= lang('oneclick_login_hint') ?: '自动识别本机手机号，无需输入手机号和验证码，一键完成注册/登录。' ?>
                             </p>
 
-                            <form id="mobileLoginForm" action="<?= get_config('baseurl') ?>/sms_verify.php" method="POST" style="max-width: 360px; margin: 0 auto;">
-                                <!-- Phone number input -->
-                                <div class="input-group" style="margin-bottom: 15px;">
+                            <!-- One-click login button -->
+                            <div class="oneclick-section">
+                                <button type="button" id="oneclickBtn" class="oneclick-btn">
+                                    <i class="fas fa-shield-alt"></i>
+                                    <?= lang('oneclick_login_btn') ?: '一键登录' ?>
+                                </button>
+                            </div>
+
+                            <?php if ($oneclickProvider === 'demo'): ?>
+                            <!-- Demo mode: phone input to simulate one-click -->
+                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 0 auto;">
+                                <div class="input-group" style="margin-bottom: 10px;">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text"><i class="fas fa-phone"></i></span>
                                     </div>
-                                    <input type="tel" id="phone" name="phone" class="form-control"
-                                           placeholder="<?= lang('enter_phone') ?: '请输入手机号' ?>"
-                                           maxlength="11" pattern="1[3-9]\d{9}" required
-                                           autocomplete="tel">
+                                    <input type="tel" id="demoPhone" class="form-control"
+                                           placeholder="<?= lang('oneclick_demo_hint') ?: '演示模式：请输入本机手机号' ?>"
+                                           maxlength="11" pattern="1[3-9]\d{9}">
                                 </div>
-
-                                <!-- Verification code input + send button -->
-                                <div class="input-group" style="margin-bottom: 15px;">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
-                                    </div>
-                                    <input type="text" id="smsCode" name="code" class="form-control"
-                                           placeholder="<?= lang('enter_code') ?: '验证码' ?>"
-                                           maxlength="6" pattern="\d{6}" required
-                                           autocomplete="one-time-code">
-                                    <div class="input-group-append">
-                                        <button type="button" id="sendCodeBtn" class="btn btn-outline-primary">
-                                            <?= lang('send_code') ?: '获取验证码' ?>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Submit button -->
-                                <button type="submit" class="btn btn-primary btn-block" style="padding: 12px; font-size: 16px;">
+                                <button type="button" id="demoLoginBtn" class="btn btn-outline-primary btn-block">
                                     <i class="fas fa-sign-in-alt"></i>
-                                    <?= lang('login_register') ?: '登录 / 注册' ?>
+                                    <?= lang('oneclick_login_btn') ?: '一键登录' ?>
                                 </button>
-                            </form>
-
-                            <!-- Demo mode notice -->
-                            <?php if (get_config('sms_provider') === 'demo'): ?>
-                            <div class="demo-notice" style="margin-top: 15px;">
-                                <i class="fas fa-info-circle"></i>
-                                <span id="demoCodeDisplay"></span>
                             </div>
                             <?php endif; ?>
 
+                        <?php else: ?>
+                            <!-- ===== PC: Show QR code to scan with phone ===== -->
+                            <h3>
+                                <i class="fas fa-qrcode" style="color: var(--brand-blue);"></i>
+                                <?= lang('oneclick_login_title') ?: '本机号码一键登录' ?>
+                            </h3>
+                            <p>
+                                <?= lang('oneclick_login_hint') ?: '自动识别本机手机号，无需输入手机号和验证码，一键完成注册/登录。' ?>
+                            </p>
+
+                            <div class="oneclick-section" style="padding: 30px 0;">
+                                <div id="qrcode" style="display: inline-block; padding: 16px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+                                <p style="margin-top: 16px; font-size: 14px; color: var(--text-muted);">
+                                    <i class="fas fa-mobile-alt"></i>
+                                    <?= lang('qr_scan_hint') ?: '请用手机扫描二维码，在手机上完成一键登录' ?>
+                                </p>
+                            </div>
+
+                        <?php endif; ?>
+
                             <!-- Error message display -->
-                            <div id="smsError" class="alert alert-danger" style="display: none; margin-top: 15px; font-size: 14px;">
+                            <div id="oneclickError" class="alert alert-danger" style="display: none; margin-top: 15px; font-size: 14px;">
                             </div>
 
                             <div class="soap-notice" style="margin-top: 20px;">
                                 <i class="fas fa-shield-alt"></i>
-                                <?= lang('security_notice') ?: '本站仅支持手机验证码登录，不支持密码注册。账号通过 SOAP 安全创建。' ?>
+                                <?= lang('security_notice') ?: '本站采用运营商号码认证登录，无需输入密码。账号通过 SOAP 安全创建。' ?>
                             </div>
                         </div>
                     <?php endif; ?>
@@ -285,7 +300,7 @@ $serverOnline = $serverStatus !== false;
                         <ol>
                             <li><?= lang('howto_step1') ?: '修改 realmlist.wtf 文件，将内容设为：' ?>
                                 <br><code>set realmlist <?= htmlspecialchars(get_config('realmlist')) ?></code></li>
-                            <li><?= lang('howto_step2_mobile') ?: '输入手机号获取验证码，登录后将自动创建游戏账号。' ?></li>
+                            <li><?= lang('howto_step2_oneclick') ?: '在手机上打开本站，点击一键登录，系统将自动识别本机号码并创建游戏账号。' ?></li>
                             <li><?= lang('howto_step3') ?: '使用生成的账号和密码登录游戏。' ?></li>
                         </ol>
                     </div>
@@ -340,93 +355,38 @@ $serverOnline = $serverStatus !== false;
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<?php if (!$isMobile): ?>
+<!-- QR Code library for PC -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<?php endif; ?>
+
+<?php if ($isMobile && $oneclickProvider === 'aliyun' && !empty($oneclickAppKey)): ?>
+<!-- Aliyun NumberAuth H5 SDK -->
+<script src="https://g.alicdn.com/AliyunNumberAuthSDK/aliyun-numberauth-sdk.min.js"></script>
+<?php endif; ?>
+
 <script>
 $(function() {
-    var sending = false;
-    var countdown = 0;
-    var countdownTimer = null;
+    var siteUrl = '<?= addslashes($siteUrl) ?>';
+    var provider = '<?= addslashes($oneclickProvider) ?>';
+    var isMobile = <?= $isMobile ? 'true' : 'false' ?>;
 
-    $('#sendCodeBtn').on('click', function() {
-        var phone = $('#phone').val().trim();
-        var btn = $(this);
-
-        // Validate phone
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            showSMSError('请输入正确的手机号');
-            return;
-        }
-
-        if (sending || countdown > 0) return;
-
-        sending = true;
-        btn.prop('disabled', true);
-        showSMSError('');
-
-        $.ajax({
-            url: '<?= get_config("baseurl") ?>/sms_send.php',
-            type: 'POST',
-            dataType: 'json',
-            data: { phone: phone },
-            success: function(resp) {
-                sending = false;
-
-                if (resp.success) {
-                    // Start countdown
-                    countdown = 60;
-                    updateBtn();
-
-                    <?php if (get_config('sms_provider') === 'demo'): ?>
-                    // Demo mode: show the code
-                    if (resp.code) {
-                        $('#demoCodeDisplay').html(
-                            '测试模式：验证码为 <strong style="font-size:18px;color:var(--brand-blue);">' +
-                            resp.code + '</strong>（请勿在实际环境中使用）'
-                        );
-                        $('#smsCode').val(resp.code);
-                    }
-                    <?php endif; ?>
-                } else {
-                    btn.prop('disabled', false);
-
-                    if (resp.message === 'rate_limited' && resp.wait) {
-                        countdown = resp.wait;
-                        updateBtn();
-                    } else {
-                        var errMsgs = {
-                            'invalid_phone': '手机号格式不正确',
-                            'rate_limited': '发送过于频繁，请稍后再试',
-                            'mobile_auth_disabled': '手机登录功能未启用',
-                            'aliyun_config_incomplete': '阿里云短信配置不完整',
-                            'tencent_config_incomplete': '腾讯云短信配置不完整'
-                        };
-                        showSMSError(errMsgs[resp.message] || '验证码发送失败，请重试');
-                    }
-                }
-            },
-            error: function() {
-                sending = false;
-                btn.prop('disabled', false);
-                showSMSError('网络错误，请重试');
-            }
+    // --- PC: Generate QR Code ---
+    if (!isMobile && typeof QRCode !== 'undefined') {
+        new QRCode(document.getElementById('qrcode'), {
+            text: siteUrl,
+            width: 200,
+            height: 200,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
         });
-    });
-
-    function updateBtn() {
-        var btn = $('#sendCodeBtn');
-        if (countdown > 0) {
-            btn.text(countdown + 's 后重发');
-            btn.prop('disabled', true);
-            countdown--;
-            countdownTimer = setTimeout(updateBtn, 1000);
-        } else {
-            clearTimeout(countdownTimer);
-            btn.text('获取验证码');
-            btn.prop('disabled', false);
-        }
     }
 
-    function showSMSError(msg) {
-        var el = $('#smsError');
+    // --- Error display helper ---
+    function showError(msg) {
+        var el = $('#oneclickError');
         if (msg) {
             el.html('<i class="fas fa-exclamation-circle"></i> ' + msg).show();
         } else {
@@ -434,10 +394,114 @@ $(function() {
         }
     }
 
-    // Auto-clear error on input
-    $('#phone, #smsCode').on('input', function() {
-        showSMSError('');
+    // --- Redirect after successful login ---
+    function handleLoginSuccess(resp) {
+        if (resp.success) {
+            if (resp.redirect) {
+                window.location.href = resp.redirect;
+            } else {
+                window.location.reload();
+            }
+        } else {
+            showError(resp.message || '<?= lang("oneclick_failed") ?: "一键登录失败，请重试" ?>');
+        }
+    }
+
+    // --- Send token/phone to backend ---
+    function submitOneClick(token, phone) {
+        var data = {};
+        if (token) data.token = token;
+        if (phone) data.phone = phone;
+
+        $.ajax({
+            url: siteUrl + '/oneclick_verify.php',
+            type: 'POST',
+            dataType: 'json',
+            data: data,
+            success: handleLoginSuccess,
+            error: function() {
+                showError('网络错误，请重试');
+            }
+        });
+    }
+
+    <?php if ($isMobile): ?>
+    // --- Mobile: One-Click Login ---
+
+    <?php if ($oneclickProvider === 'aliyun' && !empty($oneclickAppKey)): ?>
+    // Production mode: Aliyun NumberAuth H5 SDK
+    var authSDK = null;
+    var oneClickBusy = false;
+
+    function initAliyunAuth() {
+        if (typeof AliyunNumberAuth === 'undefined') {
+            showError('号码认证SDK加载失败，请刷新重试');
+            return false;
+        }
+        authSDK = new AliyunNumberAuth({
+            appKey: '<?= addslashes($oneclickAppKey) ?>',
+            timeout: 8000
+        });
+        return true;
+    }
+
+    $('#oneclickBtn').on('click', function() {
+        if (oneClickBusy) return;
+        oneClickBusy = true;
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<span class="spinner"></span> <?= lang("oneclick_verifying") ?: "正在验证本机号码..." ?>');
+        showError('');
+
+        if (!initAliyunAuth()) {
+            oneClickBusy = false;
+            btn.prop('disabled', false);
+            btn.html('<i class="fas fa-shield-alt"></i> <?= lang("oneclick_login_btn") ?: "一键登录" ?>');
+            return;
+        }
+
+        authSDK.getToken().then(function(token) {
+            submitOneClick(token, null);
+        }).catch(function(err) {
+            oneClickBusy = false;
+            btn.prop('disabled', false);
+            btn.html('<i class="fas fa-shield-alt"></i> <?= lang("oneclick_login_btn") ?: "一键登录" ?>');
+
+            var errMsg = '<?= lang("oneclick_failed") ?: "一键登录失败" ?>';
+            if (err && err.code === 'NO_CELLULAR') {
+                errMsg = '<?= lang("oneclick_need_data") ?: "一键登录需要使用移动数据网络，请切换到手机流量后重试" ?>';
+            }
+            showError(errMsg);
+        });
     });
+
+    <?php else: ?>
+    // Demo mode: use phone number input
+    $('#demoLoginBtn').on('click', function() {
+        var phone = $('#demoPhone').val().trim();
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            showError('请输入正确的手机号');
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<span class="spinner"></span> <?= lang("oneclick_verifying") ?: "正在验证..." ?>');
+        showError('');
+
+        submitOneClick(null, phone);
+    });
+
+    // Also allow Enter key on the input
+    $('#demoPhone').on('keypress', function(e) {
+        if (e.which === 13) {
+            $('#demoLoginBtn').click();
+        }
+    });
+    <?php endif; ?>
+
+    <?php endif; ?>
 });
 </script>
 

@@ -26,6 +26,18 @@ return [
     'phone'                    => '手机号',
     'account_created'          => '账号创建成功！',
 
+    // One-Click Login (号码认证)
+    'oneclick_login_title'     => '本机号码一键登录',
+    'oneclick_login_hint'      => '自动识别本机手机号，无需输入手机号和验证码，一键完成注册/登录。',
+    'oneclick_login_btn'       => '一键登录',
+    'oneclick_verifying'       => '正在验证本机号码...',
+    'oneclick_success'         => '一键登录成功！',
+    'oneclick_failed'          => '一键登录失败，请尝试验证码登录',
+    'oneclick_demo_hint'       => '演示模式：请输入本机手机号模拟一键登录',
+    'oneclick_fallback_link'   => '使用验证码登录',
+    'oneclick_need_data'       => '一键登录需要使用移动数据网络，请切换到手机流量后重试',
+    'qr_scan_hint'             => '请用手机扫描二维码，在手机上完成一键登录',
+
     // Password Reset
     'reset_password'           => '重置密码',
     'reset_password_hint'      => '重置密码将生成一个新的随机密码，原密码将失效。',
@@ -58,6 +70,7 @@ return [
     'patch'                    => '补丁下载',
     'howto_step1'              => '修改 realmlist.wtf 文件，将内容设为：',
     'howto_step2_mobile'       => '输入手机号获取验证码，登录后将自动创建游戏账号。',
+    'howto_step2_oneclick'     => '在手机上打开本站，点击一键登录，系统将自动识别本机号码并创建游戏账号。',
     'howto_step3'              => '使用生成的账号和密码登录游戏。',
 
     // Server Status
@@ -70,7 +83,7 @@ return [
     'server_offline_msg'       => '无法连接到游戏服务器',
 
     // Misc
-    'security_notice'          => '本站仅支持手机验证码登录，不支持密码注册。账号通过 SOAP 安全创建。',
+    'security_notice'          => '本站采用运营商号码认证登录，无需输入密码。账号通过 SOAP 安全创建。',
     'cancel'                   => '取消',
     'save'                     => '保存',
     'close'                    => '关闭',

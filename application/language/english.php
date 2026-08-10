@@ -26,6 +26,18 @@ return [
     'phone'                    => 'Phone',
     'account_created'          => 'Account created successfully!',
 
+    // One-Click Login (Carrier Gateway Auth)
+    'oneclick_login_title'     => 'One-Click Login',
+    'oneclick_login_hint'      => 'Automatically detects your phone number via carrier gateway. No manual input needed.',
+    'oneclick_login_btn'       => 'One-Click Login',
+    'oneclick_verifying'       => 'Verifying phone number...',
+    'oneclick_success'         => 'One-click login successful!',
+    'oneclick_failed'          => 'One-click login failed, please try SMS verification',
+    'oneclick_demo_hint'       => 'Demo mode: enter your phone number to simulate one-click login',
+    'oneclick_fallback_link'   => 'Login with SMS code',
+    'oneclick_need_data'       => 'One-click login requires mobile data. Please switch to cellular network.',
+    'qr_scan_hint'             => 'Scan the QR code with your phone to complete one-click login on mobile',
+
     // Password Reset
     'reset_password'           => 'Reset Password',
     'reset_password_hint'      => 'Resetting your password will generate a new random password. The old password will be invalidated.',
@@ -58,6 +70,7 @@ return [
     'patch'                    => 'Patch Download',
     'howto_step1'              => 'Edit your realmlist.wtf file and set it to:',
     'howto_step2_mobile'       => 'Enter your phone number and verify to create a game account automatically.',
+    'howto_step2_oneclick'     => 'Open this site on your phone and tap one-click login. The system will auto-detect your number and create a game account.',
     'howto_step3'              => 'Log in to the game using the generated account and password.',
 
     // Server Status
@@ -70,7 +83,7 @@ return [
     'server_offline_msg'       => 'Cannot connect to the game server',
 
     // Misc
-    'security_notice'          => 'This site only supports phone verification login. Accounts are created securely via SOAP.',
+    'security_notice'          => 'This site uses carrier gateway authentication. No password required. Accounts are created securely via SOAP.',
     'cancel'                   => 'Cancel',
     'save'                     => 'Save',
     'close'                    => 'Close',

@@ -50,6 +50,23 @@ class MobileAuth
         return true;
     }
 
+    /**
+     * Get the domain for Web OTP API SMS format.
+     *
+     * Web OTP requires the SMS to end with:
+     *   @your-domain.com #123456
+     *
+     * This extracts the domain from baseurl.
+     *
+     * @return string
+     */
+    public static function getOtpDomain()
+    {
+        $baseurl = get_config('baseurl') ?: '';
+        $host = parse_url($baseurl, PHP_URL_HOST);
+        return $host ?: 'localhost';
+    }
+
     // -----------------------------------------------------------------------
     //  Phone number validation
     // -----------------------------------------------------------------------
@@ -204,7 +221,8 @@ class MobileAuth
 
         $response = ['success' => true, 'message' => 'code_sent'];
 
-        // In demo mode, return the code in the response for testing
+        // In demo mode, return the code so the frontend can simulate
+        // the Web OTP auto-fill (no real SMS is sent)
         if ($provider === 'demo') {
             $response['code'] = $code;
         }
@@ -318,7 +336,7 @@ class MobileAuth
             'PhoneNumbers'  => $phone,
             'SignName'       => $signName,
             'TemplateCode'   => $templateCode,
-            'TemplateParam'  => json_encode(['code' => $code]),
+            'TemplateParam'  => json_encode(['code' => $code, 'domain' => static::getOtpDomain()]),
             'AccessKeyId'    => $accessKey,
             'Format'         => 'JSON',
             'Version'        => '2017-05-25',
@@ -410,7 +428,7 @@ class MobileAuth
             'SmsSdkAppId'     => $sdkAppId,
             'SignName'         => $signName,
             'TemplateId'       => $templateId,
-            'TemplateParamSet' => [$code],
+            'TemplateParamSet' => [$code, static::getOtpDomain()],
         ]);
 
         // Step 1: Build canonical request
@@ -974,5 +992,224 @@ class MobileAuth
         }
         curl_close($ch);
         return $response;
+    }
+
+    /**
+     * Perform an HTTP POST request using cURL.
+     *
+     * @param string $url
+     * @param string|array $data  POST body (string for raw JSON, array for form-encoded)
+     * @param array $headers  Optional HTTP headers
+     * @return string|false
+     */
+    private static function httpPost($url, $data, $headers = [])
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'WoWSimpleRegistration/MobileAuth');
+
+        if (is_array($data)) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        } else {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        }
+
+        if (!empty($headers)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        }
+
+        $response = curl_exec($ch);
+        if (curl_errno($ch)) {
+            if (get_config('debug_mode')) {
+                error_log('[MobileAuth] HTTP POST error: ' . curl_error($ch));
+            }
+            curl_close($ch);
+            return false;
+        }
+        curl_close($ch);
+        return $response;
+    }
+
+    // -----------------------------------------------------------------------
+    //  One-Click Login (号码认证 / Carrier Gateway Authentication)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Exchange an Aliyun NumberAuth token for the user's phone number.
+     *
+     * Uses Aliyun's GetMobile API (dypnsapi.aliyuncs.com).
+     * The token is obtained on the frontend by the Aliyun H5 SDK after
+     * the carrier gateway verifies the SIM card's phone number.
+     *
+     * Required config:
+     *   numberauth_aliyun_access_key
+     *   numberauth_aliyun_access_secret
+     *
+     * @param string $token  The access token from the frontend SDK
+     * @return array ['success' => bool, 'phone' => string, 'message' => string]
+     */
+    public static function verifyAliyunToken($token)
+    {
+        $accessKey    = get_config('numberauth_aliyun_access_key');
+        $accessSecret = get_config('numberauth_aliyun_access_secret');
+
+        if (empty($accessKey) || empty($accessSecret)) {
+            return ['success' => false, 'phone' => '', 'message' => 'numberauth_config_incomplete'];
+        }
+
+        if (empty($token)) {
+            return ['success' => false, 'phone' => '', 'message' => 'token_required'];
+        }
+
+        // Aliyun dypnsapi GetMobile API
+        $host = 'dypnsapi.aliyuncs.com';
+        $params = [
+            'AccessKeyId'      => $accessKey,
+            'Format'           => 'JSON',
+            'Version'          => '2017-05-25',
+            'SignatureMethod'  => 'HMAC-SHA1',
+            'Timestamp'        => gmdate('Y-m-d\TH:i:s\Z'),
+            'SignatureVersion' => '1.0',
+            'SignatureNonce'   => uniqid(),
+            'Action'           => 'GetMobile',
+            'RegionId'         => 'cn-hangzhou',
+            'AccessToken'      => $token,
+        ];
+
+        // Compute signature (same method as SMS API)
+        ksort($params);
+        $sortedQuery = '';
+        foreach ($params as $k => $v) {
+            $sortedQuery .= '&' . static::aliyunEncode($k) . '=' . static::aliyunEncode($v);
+        }
+        $sortedQuery = ltrim($sortedQuery, '&');
+        $stringToSign = 'GET&' . static::aliyunEncode('/') . '&' . static::aliyunEncode($sortedQuery);
+        $signature = base64_encode(hash_hmac('sha1', $stringToSign, $accessSecret . '&', true));
+        $params['Signature'] = $signature;
+
+        $url = 'https://' . $host . '/?' . http_build_query($params);
+        $response = static::httpGet($url);
+
+        if ($response === false) {
+            return ['success' => false, 'phone' => '', 'message' => 'numberauth_request_failed'];
+        }
+
+        $data = json_decode($response, true);
+        if (isset($data['Code']) && $data['Code'] === 'OK' && !empty($data['GetMobileResultDTO']['Mobile'])) {
+            $phone = $data['GetMobileResultDTO']['Mobile'];
+            // Chinese numbers from Aliyun may or may not have the 86 prefix
+            $phone = preg_replace('/^86/', '', $phone);
+            return ['success' => true, 'phone' => $phone, 'message' => 'token_verified'];
+        }
+
+        $errMsg = $data['Message'] ?? $data['Code'] ?? 'numberauth_failed';
+        return ['success' => false, 'phone' => '', 'message' => $errMsg];
+    }
+
+    /**
+     * One-click login: register or log in using a phone number obtained
+     * from carrier gateway authentication (no SMS verification needed).
+     *
+     * The carrier gateway already proved the user owns this phone number,
+     * so we skip SMS verification and go straight to account creation/login.
+     *
+     * @param string $phone  Phone number from carrier gateway
+     * @return array ['success' => bool, 'username' => ..., 'password' => ..., 'message' => ..., 'is_new' => bool]
+     */
+    public static function oneClickLogin($phone)
+    {
+        if (!static::init()) {
+            return ['success' => false, 'message' => 'mobile_auth_disabled'];
+        }
+
+        if (!static::isValidPhone($phone)) {
+            return ['success' => false, 'message' => 'invalid_phone'];
+        }
+
+        // Check if this phone is already bound
+        $binding = static::getBindingByPhone($phone);
+        if ($binding) {
+            // Already bound — check if account still exists via SOAP
+            if (static::accountExists($binding['username'])) {
+                // Log in
+                $_SESSION['mobile_logged_in'] = true;
+                $_SESSION['mobile_username']  = $binding['username'];
+                $_SESSION['mobile_phone']     = $phone;
+
+                return [
+                    'success'  => true,
+                    'username' => $binding['username'],
+                    'password' => '',
+                    'message'  => 'login_success',
+                    'is_new'   => false,
+                ];
+            }
+
+            // Account was deleted — re-create with the same username
+            $username = $binding['username'];
+        }
+
+        // Auto-create a new game account
+        if (!isset($username) || empty($username)) {
+            $username = static::generateUsername($phone);
+        }
+        $password = static::generatePassword();
+        $username = strtoupper($username);
+
+        // Create account via SOAP
+        $createCommand = get_config('soap_ca_command') ?: 'account create {USERNAME} {PASSWORD}';
+        $createCommand = str_replace('{USERNAME}', $username, $createCommand);
+        $createCommand = str_replace('{PASSWORD}', $password, $createCommand);
+        $result = static::soapCommand($createCommand);
+
+        if (!$result['success']) {
+            return ['success' => false, 'message' => 'soap_create_failed'];
+        }
+
+        // Check if account already existed
+        $msg = strtolower($result['message']);
+        if (strpos($msg, 'already exist') !== false) {
+            $username = static::generateUsername($phone . time());
+            $password = static::generatePassword();
+            $createCommand = get_config('soap_ca_command') ?: 'account create {USERNAME} {PASSWORD}';
+            $createCommand = str_replace('{USERNAME}', $username, $createCommand);
+            $createCommand = str_replace('{PASSWORD}', $password, $createCommand);
+            $result = static::soapCommand($createCommand);
+            if (!$result['success']) {
+                return ['success' => false, 'message' => 'soap_create_failed'];
+            }
+        }
+
+        // Set expansion via SOAP
+        $addonCommand = get_config('soap_asa_command');
+        if (!empty($addonCommand)) {
+            $addonCommand = str_replace('{USERNAME}', $username, $addonCommand);
+            $addonCommand = str_replace('{EXPANSION}', get_config('expansion'), $addonCommand);
+            static::soapCommand($addonCommand);
+        } else {
+            static::soapCommand("account set addon {$username} " . get_config('expansion'));
+        }
+
+        // Save the binding
+        static::saveBinding($phone, $username);
+
+        // Log in
+        $_SESSION['mobile_logged_in'] = true;
+        $_SESSION['mobile_username']  = $username;
+        $_SESSION['mobile_phone']     = $phone;
+
+        return [
+            'success'  => true,
+            'username' => $username,
+            'password' => $password,
+            'message'  => 'register_success',
+            'is_new'   => true,
+        ];
     }
 }
