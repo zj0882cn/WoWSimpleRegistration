@@ -1,21 +1,28 @@
 <?php
 /**
- * Main Template — WeChat-Only Mode (Light Theme)
+ * Main Template — Mobile Login Mode (Light Theme)
  *
  * Homepage shows:
  *   1. Server status (online players, uptime, etc.) via SOAP
- *   2. WeChat login button (or account info if logged in)
+ *   2. Phone number + SMS code login form (or account info if logged in)
  *   3. Connection guide & contact tabs
  *
  * @author Amin Mahmoudi (MasterkinG)
  **/
 require_once 'header.php';
 
-$wxLoggedIn = WeChatAuth::isLoggedIn();
-$wxUser     = WeChatAuth::getCurrentUser();
+$mbLoggedIn = MobileAuth::isLoggedIn();
+$mbUser     = MobileAuth::getCurrentUser();
+
+// Check if this is a new registration (show password once)
+$newAccount = !empty($_SESSION['mobile_new_account']) ? $_SESSION['mobile_new_account'] : false;
+$newPassword = $_SESSION['mobile_new_password'] ?? '';
+if ($newAccount) {
+    unset($_SESSION['mobile_new_account'], $_SESSION['mobile_new_password']);
+}
 
 // Get server status via SOAP
-$serverStatus = WeChatAuth::getServerStatus();
+$serverStatus = MobileAuth::getServerStatus();
 $serverOnline = $serverStatus !== false;
 ?>
 
@@ -26,10 +33,34 @@ $serverOnline = $serverStatus !== false;
 
         <div class="col-xs-12" style="margin-top: 20px;">
             <!-- Status messages -->
-            <?php if (!empty($wechatLoginMsg)): ?>
+            <?php if (!empty($mobileLoginMsg)): ?>
                 <div class="alert-wechat">
                     <i class="fas fa-check-circle"></i>
-                    <?= htmlspecialchars($wechatLoginMsg) ?>
+                    <?= htmlspecialchars($mobileLoginMsg) ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- New account info (shown once after registration) -->
+            <?php if ($newAccount && $mbLoggedIn && !empty($newPassword)): ?>
+                <div class="alert-wechat" style="border-color: var(--brand-blue);">
+                    <div style="text-align: center;">
+                        <i class="fas fa-gift" style="font-size: 28px; color: var(--brand-blue);"></i>
+                        <h5 style="margin-top: 10px; color: var(--brand-blue);">
+                            <?= lang('account_created') ?: '账号创建成功！' ?>
+                        </h5>
+                        <p style="margin: 10px 0;">
+                            <?= lang('account') ?: '游戏账号' ?>：
+                            <code style="font-size: 16px; font-weight: 700;"><?= htmlspecialchars($mbUser['username']) ?></code>
+                        </p>
+                        <p style="margin: 5px 0;">
+                            <?= lang('password') ?: '密码' ?>：
+                            <code style="font-size: 16px; font-weight: 700; color: var(--brand-blue);"><?= htmlspecialchars($newPassword) ?></code>
+                        </p>
+                        <div class="password-warning" style="margin-top: 10px;">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <?= lang('save_password_warning') ?: '请立即妥善保存密码！此密码仅显示一次。' ?>
+                        </div>
+                    </div>
                 </div>
             <?php endif; ?>
 
@@ -131,34 +162,36 @@ $serverOnline = $serverStatus !== false;
                 <div class="tab-pane fade show active" id="nav-login" role="tabpanel"
                      aria-labelledby="nav-login-tab">
 
-                    <?php if ($wxLoggedIn && $wxUser): ?>
+                    <?php if ($mbLoggedIn && $mbUser): ?>
                         <!-- ===== Logged In: Show Account Info ===== -->
-                        <div class="wechat-login-section" style="padding: 20px;">
+                        <div class="mobile-login-section" style="padding: 20px;">
                             <h3>
-                                <i class="fas fa-check-circle" style="color: var(--wechat-green);"></i>
+                                <i class="fas fa-check-circle" style="color: var(--brand-blue);"></i>
                                 <?= lang('welcome_back') ?: '欢迎回来' ?>
                             </h3>
                             <div class="account-info-card">
                                 <div class="row">
                                     <div class="col-md-6">
                                         <span class="label d-block"><?= lang('account') ?: '游戏账号' ?></span>
-                                        <span class="value"><?= htmlspecialchars($wxUser['username'] ?? '') ?></span>
+                                        <span class="value"><?= htmlspecialchars($mbUser['username'] ?? '') ?></span>
                                     </div>
                                     <div class="col-md-6 text-md-right">
-                                        <a href="<?= get_config('baseurl') ?>?wechat_logout=1"
-                                           class="btn btn-outline-secondary btn-sm" style="margin-top: 15px;">
-                                            <i class="fas fa-sign-out-alt"></i>
-                                            <?= lang('logout') ?: '退出登录' ?>
-                                        </a>
+                                        <span class="label d-block"><?= lang('phone') ?: '手机号' ?></span>
+                                        <span class="value" style="font-size: 14px;"><?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'] ?? '')) ?></span>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="text-center" style="margin-top: 20px;">
-                                <a href="<?= get_config('baseurl') ?>/wechat_reset_password.php"
+                                <a href="<?= get_config('baseurl') ?>/reset_password.php"
                                    class="btn btn-warning" style="padding: 10px 30px;">
                                     <i class="fas fa-key"></i>
                                     <?= lang('reset_password') ?: '重置密码' ?>
+                                </a>
+                                <a href="<?= get_config('baseurl') ?>?mobile_logout=1"
+                                   class="btn btn-outline-secondary" style="padding: 10px 30px; margin-top: 10px;">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    <?= lang('logout') ?: '退出登录' ?>
                                 </a>
                             </div>
 
@@ -169,72 +202,66 @@ $serverOnline = $serverStatus !== false;
                         </div>
 
                     <?php else: ?>
-                        <!-- ===== Not Logged In: Show QR Code for WeChat Login ===== -->
-                        <div class="wechat-login-section">
-                            <?php
-                            $loginMode = WeChatAuth::getLoginMode();
-                            $authUrl = WeChatAuth::getAuthorizeUrl();
-                            $baseUrl = get_config('baseurl');
-                            // QR code API for the site URL
-                            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($authUrl ?: $baseUrl);
-                            ?>
+                        <!-- ===== Not Logged In: Show Phone Login Form ===== -->
+                        <div class="mobile-login-section">
+                            <h3>
+                                <i class="fas fa-mobile-alt" style="color: var(--brand-blue);"></i>
+                                <?= lang('mobile_login_title') ?: '手机号登录' ?>
+                            </h3>
+                            <p>
+                                <?= lang('mobile_login_hint') ?: '输入手机号获取验证码，首次登录将自动创建游戏账号。' ?>
+                            </p>
 
-                            <?php if ($loginMode === 'direct'): ?>
-                                <!-- Inside WeChat browser: auto-redirect to OAuth -->
-                                <script>
-                                window.location.href = <?= json_encode($authUrl) ?>;
-                                </script>
-                                <p><?= lang('wechat_redirecting') ?: '正在跳转微信登录...' ?></p>
-
-                            <?php elseif ($loginMode === 'open_in_wechat'): ?>
-                                <!-- Mobile but not in WeChat browser: show QR code -->
-                                <h3>
-                                    <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
-                                    <?= lang('wechat_login_title') ?: '请在微信中打开' ?>
-                                </h3>
-                                <p>
-                                    <?= lang('wechat_open_in_wechat_hint') ?: '请使用微信扫描下方二维码，在微信中打开本页面完成登录。' ?>
-                                </p>
-                                <div style="text-align: center; padding: 20px 0;">
-                                    <img src="<?= htmlspecialchars($qrUrl) ?>" alt="QR Code"
-                                         style="width: 200px; height: 200px; border-radius: 12px; border: 2px solid var(--wechat-green);"
-                                         onerror="this.style.display='none'">
-                                    <p style="font-size: 13px; color: #999; margin-top: 12px;">
-                                        <?= lang('wechat_open_url') ?: '或在微信中访问：' ?><br>
-                                        <code style="word-break: break-all; font-size: 11px;"><?= htmlspecialchars($baseUrl) ?></code>
-                                    </p>
+                            <form id="mobileLoginForm" action="<?= get_config('baseurl') ?>/sms_verify.php" method="POST" style="max-width: 360px; margin: 0 auto;">
+                                <!-- Phone number input -->
+                                <div class="input-group" style="margin-bottom: 15px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                    </div>
+                                    <input type="tel" id="phone" name="phone" class="form-control"
+                                           placeholder="<?= lang('enter_phone') ?: '请输入手机号' ?>"
+                                           maxlength="11" pattern="1[3-9]\d{9}" required
+                                           autocomplete="tel">
                                 </div>
 
-                            <?php else: ?>
-                                <!-- PC browser: show QR code for WeChat scan -->
-                                <h3>
-                                    <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
-                                    <?= lang('wechat_login_title') ?: '微信扫码登录' ?>
-                                </h3>
-                                <p>
-                                    <?= lang('wechat_login_hint') ?: '请使用微信扫描下方二维码登录，注册后将自动创建游戏账号。' ?>
-                                </p>
+                                <!-- Verification code input + send button -->
+                                <div class="input-group" style="margin-bottom: 15px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
+                                    </div>
+                                    <input type="text" id="smsCode" name="code" class="form-control"
+                                           placeholder="<?= lang('enter_code') ?: '验证码' ?>"
+                                           maxlength="6" pattern="\d{6}" required
+                                           autocomplete="one-time-code">
+                                    <div class="input-group-append">
+                                        <button type="button" id="sendCodeBtn" class="btn btn-outline-primary">
+                                            <?= lang('send_code') ?: '获取验证码' ?>
+                                        </button>
+                                    </div>
+                                </div>
 
-                                <?php if (get_config('wechat_enabled') && $authUrl): ?>
-                                    <div style="text-align: center; padding: 20px 0;">
-                                        <img src="<?= htmlspecialchars($qrUrl) ?>" alt="微信登录二维码"
-                                             style="width: 200px; height: 200px; border-radius: 12px; border: 2px solid var(--wechat-green); box-shadow: 0 2px 12px rgba(0,0,0,0.1);"
-                                             onerror="this.style.display='none'">
-                                        <p style="font-size: 13px; color: #999; margin-top: 12px;">
-                                            <i class="fab fa-weixin"></i>
-                                            <?= lang('wechat_scan_qr_hint') ?: '打开微信扫一扫，即可登录游戏' ?>
-                                        </p>
-                                    </div>
-                                <?php else: ?>
-                                    <div class="alert alert-warning">
-                                        <?= lang('wechat_not_enabled') ?: '微信登录功能未启用，请在配置文件中设置 wechat_enabled = true' ?>
-                                    </div>
-                                <?php endif; ?>
+                                <!-- Submit button -->
+                                <button type="submit" class="btn btn-primary btn-block" style="padding: 12px; font-size: 16px;">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                    <?= lang('login_register') ?: '登录 / 注册' ?>
+                                </button>
+                            </form>
+
+                            <!-- Demo mode notice -->
+                            <?php if (get_config('sms_provider') === 'demo'): ?>
+                            <div class="demo-notice" style="margin-top: 15px;">
+                                <i class="fas fa-info-circle"></i>
+                                <span id="demoCodeDisplay"></span>
+                            </div>
                             <?php endif; ?>
+
+                            <!-- Error message display -->
+                            <div id="smsError" class="alert alert-danger" style="display: none; margin-top: 15px; font-size: 14px;">
+                            </div>
 
                             <div class="soap-notice" style="margin-top: 20px;">
                                 <i class="fas fa-shield-alt"></i>
-                                <?= lang('security_notice') ?: '本站仅支持微信登录，不支持密码注册。账号通过 SOAP 安全创建。' ?>
+                                <?= lang('security_notice') ?: '本站仅支持手机验证码登录，不支持密码注册。账号通过 SOAP 安全创建。' ?>
                             </div>
                         </div>
                     <?php endif; ?>
@@ -258,7 +285,7 @@ $serverOnline = $serverStatus !== false;
                         <ol>
                             <li><?= lang('howto_step1') ?: '修改 realmlist.wtf 文件，将内容设为：' ?>
                                 <br><code>set realmlist <?= htmlspecialchars(get_config('realmlist')) ?></code></li>
-                            <li><?= lang('howto_step2') ?: '使用微信扫码登录本站，系统将自动创建游戏账号。' ?></li>
+                            <li><?= lang('howto_step2_mobile') ?: '输入手机号获取验证码，登录后将自动创建游戏账号。' ?></li>
                             <li><?= lang('howto_step3') ?: '使用生成的账号和密码登录游戏。' ?></li>
                         </ol>
                     </div>
@@ -271,7 +298,6 @@ $serverOnline = $serverStatus !== false;
                         <h5><?= lang('contact') ?: '联系我们' ?></h5>
                         <hr>
                         <p><?= lang('contact_text') ?: '如有问题，请通过以下方式联系我们：' ?></p>
-                        <p><i class="fab fa-weixin"></i> <?= lang('contact_wechat') ?: '微信公众号' ?>: WoWServer</p>
                         <p><i class="fab fa-qq"></i> QQ群: 123456789</p>
                     </div>
                 </div>
@@ -302,7 +328,7 @@ $serverOnline = $serverStatus !== false;
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-wechat btn-block">
+                    <button type="submit" class="btn btn-primary btn-block">
                         <?= lang('save') ?: '保存' ?>
                     </button>
                 </form>
@@ -311,5 +337,108 @@ $serverOnline = $serverStatus !== false;
     </div>
 </div>
 <?php endif; ?>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+$(function() {
+    var sending = false;
+    var countdown = 0;
+    var countdownTimer = null;
+
+    $('#sendCodeBtn').on('click', function() {
+        var phone = $('#phone').val().trim();
+        var btn = $(this);
+
+        // Validate phone
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            showSMSError('请输入正确的手机号');
+            return;
+        }
+
+        if (sending || countdown > 0) return;
+
+        sending = true;
+        btn.prop('disabled', true);
+        showSMSError('');
+
+        $.ajax({
+            url: '<?= get_config("baseurl") ?>/sms_send.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { phone: phone },
+            success: function(resp) {
+                sending = false;
+
+                if (resp.success) {
+                    // Start countdown
+                    countdown = 60;
+                    updateBtn();
+
+                    <?php if (get_config('sms_provider') === 'demo'): ?>
+                    // Demo mode: show the code
+                    if (resp.code) {
+                        $('#demoCodeDisplay').html(
+                            '测试模式：验证码为 <strong style="font-size:18px;color:var(--brand-blue);">' +
+                            resp.code + '</strong>（请勿在实际环境中使用）'
+                        );
+                        $('#smsCode').val(resp.code);
+                    }
+                    <?php endif; ?>
+                } else {
+                    btn.prop('disabled', false);
+
+                    if (resp.message === 'rate_limited' && resp.wait) {
+                        countdown = resp.wait;
+                        updateBtn();
+                    } else {
+                        var errMsgs = {
+                            'invalid_phone': '手机号格式不正确',
+                            'rate_limited': '发送过于频繁，请稍后再试',
+                            'mobile_auth_disabled': '手机登录功能未启用',
+                            'aliyun_config_incomplete': '阿里云短信配置不完整',
+                            'tencent_config_incomplete': '腾讯云短信配置不完整'
+                        };
+                        showSMSError(errMsgs[resp.message] || '验证码发送失败，请重试');
+                    }
+                }
+            },
+            error: function() {
+                sending = false;
+                btn.prop('disabled', false);
+                showSMSError('网络错误，请重试');
+            }
+        });
+    });
+
+    function updateBtn() {
+        var btn = $('#sendCodeBtn');
+        if (countdown > 0) {
+            btn.text(countdown + 's 后重发');
+            btn.prop('disabled', true);
+            countdown--;
+            countdownTimer = setTimeout(updateBtn, 1000);
+        } else {
+            clearTimeout(countdownTimer);
+            btn.text('获取验证码');
+            btn.prop('disabled', false);
+        }
+    }
+
+    function showSMSError(msg) {
+        var el = $('#smsError');
+        if (msg) {
+            el.html('<i class="fas fa-exclamation-circle"></i> ' + msg).show();
+        } else {
+            el.hide();
+        }
+    }
+
+    // Auto-clear error on input
+    $('#phone, #smsCode').on('input', function() {
+        showSMSError('');
+    });
+});
+</script>
 
 <?php require_once 'footer.php'; ?>

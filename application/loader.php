@@ -33,8 +33,8 @@ require_once app_path . 'config/config.php';
 require_once app_path . 'include/core_handler.php';
 require_once app_path . 'include/functions.php';
 
-// Load WeChat authentication module
-require_once app_path . 'include/wechat.php';
+// Load Mobile (SMS) authentication module
+require_once app_path . 'include/mobile.php';
 
 // Load user class (password reset only — no register, no changepass)
 require_once app_path . 'include/user.php';
@@ -74,7 +74,7 @@ if (get_config('debug_mode')) {
 }
 
 // Validate config version
-if (empty(get_config('script_version')) || version_compare(get_config('script_version'), '2.0.2', '<')) {
+if (empty(get_config('script_version')) || version_compare(get_config('script_version'), '2.1.0', '<')) {
     exit('Use the latest version of config.php file.');
 }
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * User Class — WeChat-Only Mode (SOAP)
+ * User Class — Mobile Login Mode (SOAP)
  *
  * This is a stripped-down version of the original user.php.
  * The following features have been REMOVED:
@@ -11,7 +11,7 @@
  *   - lang_cookie_changer() — Language switching
  *   - post_handler() — Minimal POST handler (language change + captcha)
  *
- * Password reset is handled by WeChatAuth::resetPassword() via SOAP,
+ * Password reset is handled by MobileAuth::resetPassword() via SOAP,
  * not by this class.
  *
  * @author Amin Mahmoudi (MasterkinG)
@@ -30,7 +30,7 @@ class user
      *   - Captcha regeneration (if Gregwar\Captcha is available)
      *
      * Registration, change password, and restore password are NOT handled
-     * here. Password reset is handled by wechat_reset_password.php via SOAP.
+     * here. Password reset is handled by reset_password.php via SOAP.
      */
     public static function post_handler()
     {

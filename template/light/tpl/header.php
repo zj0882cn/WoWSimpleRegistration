@@ -1,6 +1,6 @@
 <?php
 /**
- * Header Template — Light Theme
+ * Header Template — Light Theme (Mobile Login Mode)
  *
  * @author Amin Mahmoudi (MasterkinG)
  **/
@@ -15,8 +15,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
     <style>
         :root {
-            --wechat-green: #07c160;
-            --wechat-green-hover: #06ad56;
+            --brand-blue: #2563eb;
+            --brand-blue-hover: #1d4ed8;
+            --brand-blue-light: #dbeafe;
             --bg: #f5f7fa;
             --card-bg: #fff;
             --text: #333;
@@ -50,35 +51,36 @@
             font-size: 14px;
         }
         .nav-tabs .nav-link.active {
-            color: var(--wechat-green);
-            border-bottom-color: var(--wechat-green);
+            color: var(--brand-blue);
+            border-bottom-color: var(--brand-blue);
             background: none;
         }
-        .btn-wechat {
-            background: var(--wechat-green);
-            color: #fff;
-            border: none;
-            padding: 12px 40px;
-            font-size: 16px;
-            border-radius: 8px;
-            transition: background 0.2s;
+        .btn-primary {
+            background: var(--brand-blue);
+            border-color: var(--brand-blue);
         }
-        .btn-wechat:hover {
-            background: var(--wechat-green-hover);
-            color: #fff;
-            text-decoration: none;
+        .btn-primary:hover {
+            background: var(--brand-blue-hover);
+            border-color: var(--brand-blue-hover);
         }
-        .btn-wechat i { margin-right: 8px; }
-        .wechat-login-section {
+        .btn-outline-primary {
+            color: var(--brand-blue);
+            border-color: var(--brand-blue);
+        }
+        .btn-outline-primary:hover {
+            background: var(--brand-blue);
+            border-color: var(--brand-blue);
+        }
+        .mobile-login-section {
             text-align: center;
             padding: 40px 20px;
         }
-        .wechat-login-section h3 {
+        .mobile-login-section h3 {
             margin-bottom: 10px;
             font-size: 22px;
             color: var(--text);
         }
-        .wechat-login-section p {
+        .mobile-login-section p {
             color: var(--text-muted);
             margin-bottom: 30px;
             font-size: 14px;
@@ -100,9 +102,9 @@
             font-family: 'Courier New', monospace;
         }
         .alert-wechat {
-            background: #e8f7ef;
-            border: 1px solid #07c160;
-            color: #07c160;
+            background: #eff6ff;
+            border: 1px solid var(--brand-blue);
+            color: var(--brand-blue);
             border-radius: 8px;
             padding: 12px 16px;
             margin-bottom: 20px;
@@ -131,6 +133,24 @@
             background: #f8f9fa;
             border-radius: 4px;
             text-align: center;
+        }
+        .demo-notice {
+            font-size: 13px;
+            color: #856404;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 10px 16px;
+            text-align: center;
+        }
+        .input-group-text {
+            background: #f8f9fa;
+            border-color: #e8e8e8;
+            color: #999;
+        }
+        .form-control:focus {
+            border-color: var(--brand-blue);
+            box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.15);
         }
         /* Server Status Card */
         .server-status-card {
