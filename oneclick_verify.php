@@ -1,13 +1,12 @@
 <?php
 /**
- * One-Click Login Endpoint — Carrier Gateway Authentication
+ * Register Endpoint — Phone Verification + User-Defined Account
  *
- * Receives a token from the Aliyun NumberAuth H5 SDK (or a phone number
- * in demo mode), verifies it server-side, and registers/logs in the user
- * without any SMS verification.
+ * New user: phone verification + user-defined username + user-defined password
+ * Returning user: phone recognized → direct login (no password needed on web)
  *
- * Request (production):  POST { token: "xxx" }
- * Request (demo):        POST { phone: "13812345678" }
+ * Request (demo):   POST { phone: "13812345678", username: "MyAccount", password: "mypass" }
+ * Request (aliyun): POST { token: "xxx", username: "MyAccount", password: "mypass" }
  * Response: JSON { success: bool, message: string, redirect?: string }
  *
  * @author AzerothCore Community
@@ -37,6 +36,8 @@ if (!get_config('mobile_enabled')) {
 $provider = get_config('numberauth_provider') ?: 'demo';
 $token    = trim($_POST['token'] ?? '');
 $phone    = trim($_POST['phone'] ?? '');
+$password = trim($_POST['password'] ?? '');
+$username = trim($_POST['username'] ?? '');
 
 // --- Production mode: verify Aliyun token ---
 if ($provider === 'aliyun' && !empty($token)) {
@@ -53,7 +54,6 @@ if ($provider === 'aliyun' && !empty($token)) {
 
     $phone = $verifyResult['phone'];
 } elseif ($provider === 'aliyun' && empty($token) && empty($phone)) {
-    // No token and no phone in aliyun mode
     echo json_encode([
         'success'  => false,
         'message'  => 'token_required',
@@ -63,18 +63,16 @@ if ($provider === 'aliyun' && !empty($token)) {
 }
 
 // --- Demo mode: use the phone number directly ---
-// In demo mode, the frontend sends the phone number (simulating auto-detection)
 
 if (empty($phone)) {
     echo json_encode(['success' => false, 'message' => 'phone_required']);
     exit;
 }
 
-// Perform one-click login (register or log in)
-$result = MobileAuth::oneClickLogin($phone);
+// Perform register or login
+$result = MobileAuth::oneClickLogin($phone, $password, $username);
 
 if ($result['success']) {
-    // Store new account info in session for display
     if (!empty($result['is_new'])) {
         $_SESSION['mobile_new_account']  = true;
         $_SESSION['mobile_new_password'] = $result['password'];

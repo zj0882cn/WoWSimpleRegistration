@@ -937,6 +937,71 @@ class MobileAuth
         return static::resetPassword($username);
     }
 
+    /**
+     * Change the password for a game account using SOAP.
+     *
+     * Unlike resetPassword(), this requires the user to supply the new
+     * password themselves (old password is not verifiable via SOAP, so
+     * we rely on the session being authenticated).
+     *
+     * @param string $username
+     * @param string $newPassword  User-supplied new password (6-32 chars)
+     * @return array
+     */
+    public static function changePassword($username, $newPassword)
+    {
+        $username = strtoupper($username);
+        $newPassword = trim($newPassword);
+
+        if (strlen($newPassword) < 6 || strlen($newPassword) > 32) {
+            return ['success' => false, 'message' => 'invalid_password'];
+        }
+
+        if (!static::accountExists($username)) {
+            return ['success' => false, 'message' => 'account_not_found'];
+        }
+
+        $pwCommand = "account set password {$username} {$newPassword} {$newPassword}";
+        $pwResult = static::soapCommand($pwCommand);
+
+        if (!$pwResult['success']) {
+            return ['success' => false, 'message' => 'soap_error'];
+        }
+
+        $msg = strtolower($pwResult['message']);
+        if (strpos($msg, 'not exist') !== false ||
+            strpos($msg, 'not found') !== false ||
+            strpos($msg, 'does not exist') !== false) {
+            return ['success' => false, 'message' => 'account_not_found'];
+        }
+
+        return [
+            'success'  => true,
+            'username' => $username,
+            'message'  => 'password_changed',
+        ];
+    }
+
+    /**
+     * Change password for the currently logged-in user.
+     *
+     * @param string $newPassword
+     * @return array
+     */
+    public static function changeMyPassword($newPassword)
+    {
+        if (!static::isLoggedIn()) {
+            return ['success' => false, 'message' => 'not_logged_in'];
+        }
+
+        $username = $_SESSION['mobile_username'] ?? '';
+        if (empty($username)) {
+            return ['success' => false, 'message' => 'no_bound_account'];
+        }
+
+        return static::changePassword($username, $newPassword);
+    }
+
     // -----------------------------------------------------------------------
     //  Session management
     // -----------------------------------------------------------------------
@@ -1131,10 +1196,12 @@ class MobileAuth
      * The carrier gateway already proved the user owns this phone number,
      * so we skip SMS verification and go straight to account creation/login.
      *
-     * @param string $phone  Phone number from carrier gateway
+     * @param string $phone     Phone number from carrier gateway
+     * @param string $password  User-supplied password (required for new accounts)
+     * @param string $customUsername  User-supplied username (optional, auto-generated if empty)
      * @return array ['success' => bool, 'username' => ..., 'password' => ..., 'message' => ..., 'is_new' => bool]
      */
-    public static function oneClickLogin($phone)
+    public static function oneClickLogin($phone, $password = '', $customUsername = '')
     {
         if (!static::init()) {
             return ['success' => false, 'message' => 'mobile_auth_disabled'];
@@ -1142,6 +1209,12 @@ class MobileAuth
 
         if (!static::isValidPhone($phone)) {
             return ['success' => false, 'message' => 'invalid_phone'];
+        }
+
+        // For new accounts, password is required and must be 6-32 chars
+        $password = trim($password);
+        if (strlen($password) < 6 || strlen($password) > 32) {
+            return ['success' => false, 'message' => 'invalid_password'];
         }
 
         // Check if this phone is already bound
@@ -1167,11 +1240,23 @@ class MobileAuth
             $username = $binding['username'];
         }
 
-        // Auto-create a new game account
+        // Use user-supplied username or auto-generate
         if (!isset($username) || empty($username)) {
-            $username = static::generateUsername($phone);
+            $customUsername = trim($customUsername);
+            if (!empty($customUsername)) {
+                // Validate custom username: 3-16 chars, alphanumeric
+                if (!preg_match('/^[A-Za-z0-9]{3,16}$/', $customUsername)) {
+                    return ['success' => false, 'message' => 'invalid_username'];
+                }
+                $username = strtoupper($customUsername);
+                // Check if username is taken
+                if (static::accountExists($username)) {
+                    return ['success' => false, 'message' => 'username_taken'];
+                }
+            } else {
+                $username = static::generateUsername($phone);
+            }
         }
-        $password = static::generatePassword();
         $username = strtoupper($username);
 
         // Create account via SOAP
@@ -1188,7 +1273,6 @@ class MobileAuth
         $msg = strtolower($result['message']);
         if (strpos($msg, 'already exist') !== false) {
             $username = static::generateUsername($phone . time());
-            $password = static::generatePassword();
             $createCommand = get_config('soap_ca_command') ?: 'account create {USERNAME} {PASSWORD}';
             $createCommand = str_replace('{USERNAME}', $username, $createCommand);
             $createCommand = str_replace('{PASSWORD}', $password, $createCommand);

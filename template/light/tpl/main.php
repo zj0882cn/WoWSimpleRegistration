@@ -192,13 +192,18 @@ $siteUrl          = get_config('baseurl') ?: '';
                             </div>
 
                             <div class="text-center" style="margin-top: 20px;">
-                                <a href="<?= get_config('baseurl') ?>/reset_password.php"
-                                   class="btn btn-warning" style="padding: 10px 30px;">
+                                <a href="<?= get_config('baseurl') ?>/change_password.php"
+                                   class="btn btn-primary" style="padding: 10px 24px;">
                                     <i class="fas fa-key"></i>
-                                    <?= lang('reset_password') ?: '重置密码' ?>
+                                    修改密码
+                                </a>
+                                <a href="<?= get_config('baseurl') ?>/reset_password.php"
+                                   class="btn btn-warning" style="padding: 10px 24px;">
+                                    <i class="fas fa-redo"></i>
+                                    忘记密码
                                 </a>
                                 <a href="<?= get_config('baseurl') ?>?mobile_logout=1"
-                                   class="btn btn-outline-secondary" style="padding: 10px 30px; margin-top: 10px;">
+                                   class="btn btn-outline-secondary" style="padding: 10px 24px; margin-top: 10px;">
                                     <i class="fas fa-sign-out-alt"></i>
                                     <?= lang('logout') ?: '退出登录' ?>
                                 </a>
@@ -206,7 +211,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                             <div class="soap-notice">
                                 <i class="fas fa-info-circle"></i>
-                                <?= lang('reset_password_hint') ?: '重置密码将生成一个新的随机密码，原密码将失效。' ?>
+                                修改密码：输入新密码直接修改。忘记密码：需手机短信验证后重置。
                             </div>
                         </div>
 
@@ -233,19 +238,35 @@ $siteUrl          = get_config('baseurl') ?: '';
                             </div>
 
                             <?php if ($oneclickProvider === 'demo'): ?>
-                            <!-- Demo mode: phone input to simulate one-click -->
+                            <!-- Demo mode: phone + username + password input -->
                             <div class="oneclick-demo-input" style="max-width: 360px; margin: 0 auto;">
                                 <div class="input-group" style="margin-bottom: 10px;">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text"><i class="fas fa-phone"></i></span>
                                     </div>
                                     <input type="tel" id="demoPhone" class="form-control"
-                                           placeholder="<?= lang('oneclick_demo_hint') ?: '演示模式：请输入本机手机号' ?>"
+                                           placeholder="<?= lang('oneclick_demo_hint') ?: '手机号（自动验证）' ?>"
                                            maxlength="11" pattern="1[3-9]\d{9}">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 10px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                    </div>
+                                    <input type="text" id="demoUsername" class="form-control"
+                                           placeholder="自定义游戏账号（3-16位字母数字）"
+                                           minlength="3" maxlength="16" pattern="[A-Za-z0-9]{3,16}">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 10px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                    </div>
+                                    <input type="password" id="demoPassword" class="form-control"
+                                           placeholder="<?= lang('password_hint') ?: '设置游戏密码（6-32位）' ?>"
+                                           minlength="6" maxlength="32">
                                 </div>
                                 <button type="button" id="demoLoginBtn" class="btn btn-outline-primary btn-block">
                                     <i class="fas fa-sign-in-alt"></i>
-                                    <?= lang('oneclick_login_btn') ?: '一键登录' ?>
+                                    <?= lang('register_btn') ?: '注册 / 登录' ?>
                                 </button>
                             </div>
                             <?php endif; ?>
@@ -276,7 +297,35 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                             <div class="soap-notice" style="margin-top: 20px;">
                                 <i class="fas fa-shield-alt"></i>
-                                <?= lang('security_notice') ?: '本站采用运营商号码认证登录，无需输入密码。账号通过 SOAP 安全创建。' ?>
+                                <?= lang('security_notice') ?: '新用户注册需手机验证，老用户可使用账号密码登录。账号通过 SOAP 安全创建。' ?>
+                            </div>
+
+                            <!-- ===== Password Login (for returning users) ===== -->
+                            <hr style="margin: 30px 0; border-color: var(--border);">
+                            <h5 style="text-align: center; color: var(--text-muted);">
+                                <?= lang('password_login_title') ?: '已有账号？密码登录' ?>
+                            </h5>
+                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 15px auto;">
+                                <div class="input-group" style="margin-bottom: 10px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                    </div>
+                                    <input type="text" id="pwdUsername" class="form-control"
+                                           placeholder="<?= lang('account_placeholder') ?: '游戏账号' ?>"
+                                           maxlength="16">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 10px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                    </div>
+                                    <input type="password" id="pwdPassword" class="form-control"
+                                           placeholder="<?= lang('password_placeholder') ?: '密码' ?>"
+                                           maxlength="32">
+                                </div>
+                                <button type="button" id="pwdLoginBtn" class="btn btn-primary btn-block">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                    <?= lang('login_btn') ?: '登录' ?>
+                                </button>
                             </div>
                         </div>
                     <?php endif; ?>
@@ -392,7 +441,13 @@ $(function() {
             'soap_error': '游戏服务器连接失败，请稍后重试',
             'mobile_auth_disabled': '登录功能未启用',
             'invalid_phone': '手机号格式不正确',
+            'invalid_password': '密码需6-32位字符',
+            'invalid_username': '账号需3-16位字母或数字',
+            'username_taken': '该账号已被使用，请换一个',
             'phone_required': '请输入手机号',
+            'password_required': '请输入密码',
+            'username_required': '请输入游戏账号',
+            'account_not_found': '账号不存在，请检查或先注册',
             'token_required': '认证令牌缺失，请重试',
             'numberauth_config_incomplete': '号码认证配置不完整，请联系管理员',
             'numberauth_request_failed': '号码认证请求失败，请重试',
@@ -419,17 +474,33 @@ $(function() {
         }
     }
 
-    // --- Send token/phone to backend ---
-    function submitOneClick(token, phone) {
+    // --- Send token/phone/username/password to backend ---
+    function submitOneClick(token, phone, username, password) {
         var data = {};
         if (token) data.token = token;
         if (phone) data.phone = phone;
+        if (username) data.username = username;
+        if (password) data.password = password;
 
         $.ajax({
             url: siteUrl + '/oneclick_verify.php',
             type: 'POST',
             dataType: 'json',
             data: data,
+            success: handleLoginSuccess,
+            error: function() {
+                showError('网络错误，请重试');
+            }
+        });
+    }
+
+    // --- Password login ---
+    function submitPasswordLogin(username, password) {
+        $.ajax({
+            url: siteUrl + '/password_login.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { username: username, password: password },
             success: handleLoginSuccess,
             error: function() {
                 showError('网络错误，请重试');
@@ -489,11 +560,22 @@ $(function() {
     });
 
     <?php else: ?>
-    // Demo mode: use phone number input
+    // Demo mode: use phone + username + password input
     $('#demoLoginBtn').on('click', function() {
         var phone = $('#demoPhone').val().trim();
+        var username = $('#demoUsername').val().trim();
+        var password = $('#demoPassword').val();
+
         if (!/^1[3-9]\d{9}$/.test(phone)) {
             showError('请输入正确的手机号');
+            return;
+        }
+        if (username && !/^[A-Za-z0-9]{3,16}$/.test(username)) {
+            showError('账号需3-16位字母或数字');
+            return;
+        }
+        if (password.length < 6 || password.length > 32) {
+            showError('密码需6-32位字符');
             return;
         }
 
@@ -502,16 +584,44 @@ $(function() {
         btn.html('<span class="spinner"></span> <?= lang("oneclick_verifying") ?: "正在验证..." ?>');
         showError('');
 
-        submitOneClick(null, phone);
+        submitOneClick(null, phone, username, password);
     });
 
-    // Also allow Enter key on the input
-    $('#demoPhone').on('keypress', function(e) {
+    // Also allow Enter key on the inputs
+    $('#demoPhone, #demoUsername, #demoPassword').on('keypress', function(e) {
         if (e.which === 13) {
             $('#demoLoginBtn').click();
         }
     });
     <?php endif; ?>
+
+    // --- Password Login (for returning users) ---
+    $('#pwdLoginBtn').on('click', function() {
+        var username = $('#pwdUsername').val().trim();
+        var password = $('#pwdPassword').val();
+
+        if (!username) {
+            showError('请输入游戏账号');
+            return;
+        }
+        if (!password) {
+            showError('请输入密码');
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<span class="spinner"></span> 登录中...');
+        showError('');
+
+        submitPasswordLogin(username, password);
+    });
+
+    $('#pwdUsername, #pwdPassword').on('keypress', function(e) {
+        if (e.which === 13) {
+            $('#pwdLoginBtn').click();
+        }
+    });
 
     <?php endif; ?>
 });
