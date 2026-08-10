@@ -1,0 +1,41 @@
+# ============================================================
+#  .gitignore — WoWSimpleRegistration (WeChat-Only Mode)
+# ============================================================
+
+# ---- Dependencies (managed by Composer) ----
+application/vendor/
+
+# ---- Configuration (contains sensitive credentials) ----
+# Keep config.php.sample in version control, ignore actual config
+application/config/config.php
+application/config/config.php.bak
+
+# ---- Runtime data (auto-generated) ----
+application/data/
+
+# ---- Test artifacts (auto-generated, not source code) ----
+tests/.pids/
+tests/mock_accounts.json
+tests/mock_oauth_codes.json
+tests/mock_oauth_tokens.json
+tests/test_wechat_bindings.json
+tests/*.log
+
+# ---- Test guide build output (keep HTML, ignore build cache) ----
+tests/test-guide/_shared/
+
+# ---- IDE / Editor ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---- OS files ----
+Thumbs.db
+desktop.ini
+
+# ---- Logs ----
+*.log
+/error_log

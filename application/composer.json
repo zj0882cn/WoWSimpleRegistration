@@ -1,0 +1,6 @@
+{
+    "require": {
+        "voku/anti-xss": "^4.1",
+        "gregwar/captcha": "^1.2"
+    }
+}
