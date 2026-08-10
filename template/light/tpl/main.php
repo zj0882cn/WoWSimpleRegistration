@@ -129,23 +129,59 @@ $wxUser     = WeChatAuth::getCurrentUser();
                     <?php else: ?>
                         <!-- ===== Not Logged In: Show WeChat Login Button ===== -->
                         <div class="wechat-login-section">
-                            <h3>
-                                <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
-                                <?= lang('wechat_login_title') ?: '微信扫码登录' ?>
-                            </h3>
-                            <p>
-                                <?= lang('wechat_login_hint') ?: '请使用微信扫描二维码登录，注册后将自动创建游戏账号。' ?>
-                            </p>
+                            <?php
+                            $loginMode = WeChatAuth::getLoginMode();
+                            $authUrl = WeChatAuth::getAuthorizeUrl();
+                            ?>
 
-                            <?php if (get_config('wechat_enabled')): ?>
-                                <a href="<?= WeChatAuth::getAuthorizeUrl() ?>" class="btn-wechat">
-                                    <i class="fab fa-weixin"></i>
-                                    <?= lang('wechat_login') ?: '微信登录' ?>
-                                </a>
-                            <?php else: ?>
-                                <div class="alert alert-warning">
-                                    <?= lang('wechat_not_enabled') ?: '微信登录功能未启用，请在配置文件中设置 wechat_enabled = true' ?>
+                            <?php if ($loginMode === 'open_in_wechat'): ?>
+                                <!-- Mobile but not in WeChat browser -->
+                                <h3>
+                                    <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
+                                    <?= lang('wechat_login_title') ?: '请在微信中打开' ?>
+                                </h3>
+                                <p>
+                                    <?= lang('wechat_open_in_wechat_hint') ?: '请使用微信扫描下方二维码，在微信中打开本页面完成登录。' ?>
+                                </p>
+                                <div style="text-align: center; padding: 30px 0;">
+                                    <div style="display: inline-block; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                        <p style="font-size: 14px; color: #999; margin-bottom: 10px;">
+                                            <i class="fas fa-mobile-alt"></i>
+                                            <?= lang('wechat_scan_to_open') ?: '用微信扫码打开' ?>
+                                        </p>
+                                        <p style="font-size: 60px; color: var(--wechat-green);">
+                                            <i class="fab fa-weixin"></i>
+                                        </p>
+                                        <p style="font-size: 13px; color: #999;">
+                                            <?= lang('wechat_open_url') ?: '或在微信中访问：' ?><br>
+                                            <code style="word-break: break-all; font-size: 11px;"><?= htmlspecialchars(get_config('baseurl')) ?></code>
+                                        </p>
+                                    </div>
                                 </div>
+                            <?php else: ?>
+                                <!-- PC browser or WeChat browser: show login button -->
+                                <h3>
+                                    <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
+                                    <?= $loginMode === 'direct'
+                                        ? (lang('wechat_login_title') ?: '微信登录')
+                                        : (lang('wechat_login_title') ?: '微信扫码登录') ?>
+                                </h3>
+                                <p>
+                                    <?= $loginMode === 'direct'
+                                        ? (lang('wechat_login_hint_mobile') ?: '点击下方按钮使用微信登录，注册后将自动创建游戏账号。')
+                                        : (lang('wechat_login_hint') ?: '请使用微信扫描二维码登录，注册后将自动创建游戏账号。') ?>
+                                </p>
+
+                                <?php if (get_config('wechat_enabled')): ?>
+                                    <a href="<?= $authUrl ?>" class="btn-wechat">
+                                        <i class="fab fa-weixin"></i>
+                                        <?= lang('wechat_login') ?: '微信登录' ?>
+                                    </a>
+                                <?php else: ?>
+                                    <div class="alert alert-warning">
+                                        <?= lang('wechat_not_enabled') ?: '微信登录功能未启用，请在配置文件中设置 wechat_enabled = true' ?>
+                                    </div>
+                                <?php endif; ?>
                             <?php endif; ?>
 
                             <div class="soap-notice" style="margin-top: 30px;">

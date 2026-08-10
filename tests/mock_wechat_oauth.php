@@ -49,21 +49,57 @@ $timestamp = date('H:i:s');
 error_log("[{$timestamp}] WeChat Mock: {$method} {$uri}");
 
 // =========================================================================
-//  1. QR Code Authorization Page
+//  1. QR Code Authorization Page (Website Application)
 //    Real URL: https://open.weixin.qq.com/connect/qrconnect?appid=...&redirect_uri=...&state=...
+//  Also handles Official Account OAuth:
+//    Real URL: https://open.weixin.qq.com/connect/oauth2/authorize?appid=...&redirect_uri=...&state=...
+//
+//  For Official Account:
+//    - PC browser: Shows QR code page (same as qrconnect)
+//    - Mobile + WeChat browser: Auto-redirects with code (seamless)
 // =========================================================================
-if ($uri === '/connect/qrconnect') {
+if ($uri === '/connect/qrconnect' || $uri === '/connect/oauth2/authorize') {
     $redirectUri = $query['redirect_uri'] ?? '';
     $state       = $query['state'] ?? '';
     $appid       = $query['appid'] ?? 'mock_appid';
+    $scope       = $query['scope'] ?? 'snsapi_userinfo';
 
-    // Decode the redirect URI (it was URL-encoded by getAuthorizeUrl)
-    $redirectUri = urldecode($redirectUri);
+    // redirect_uri is already decoded by PHP's $_GET
+    // but may be double-encoded if old code used urlencode()
+    if (strpos($redirectUri, '%3A') !== false) {
+        $redirectUri = urldecode($redirectUri);
+    }
 
     // Store in session so the "scan" handler knows where to redirect
     $_SESSION['mock_redirect_uri'] = $redirectUri;
     $_SESSION['mock_state']        = $state;
     $_SESSION['mock_appid']        = $appid;
+
+    // Detect device
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $isWeChat = stripos($ua, 'MicroMessenger') !== false;
+    $isMobile = preg_match('/Android|iPhone|iPad|iPod|Windows Phone|Mobile/i', $ua) > 0;
+
+    // Official Account + WeChat browser: simulate seamless authorization
+    if ($uri === '/connect/oauth2/authorize' && $isWeChat) {
+        // Auto-generate code and redirect (no QR code needed)
+        $code = 'mock_code_' . bin2hex(random_bytes(8));
+        $allCodes = loadJson($codesFile);
+        $allCodes[$code] = [
+            'user_key'   => 'default',
+            'created_at' => time(),
+        ];
+        if (count($allCodes) > 50) {
+            $allCodes = array_slice($allCodes, -50, null, true);
+        }
+        saveJson($codesFile, $allCodes);
+
+        $separator = strpos($redirectUri, '?') !== false ? '&' : '?';
+        $callbackUrl = $redirectUri . $separator . 'code=' . $code . '&state=' . urlencode($state);
+        error_log("[{$timestamp}] WeChat browser auto-auth redirect: {$callbackUrl}");
+        header('Location: ' . $callbackUrl);
+        exit;
+    }
 
     // Show a fake QR code page with a "Simulate Scan" button
     ?>

@@ -25,8 +25,8 @@ class WeChatAuth
     /** @var string Callback URL after WeChat authorization */
     private static $redirectUri;
 
-    /** @var string OAuth scope (always snsapi_login for website) */
-    private static $scope = 'snsapi_login';
+    /** @var string OAuth scope (snsapi_userinfo for Official Account) */
+    private static $scope = 'snsapi_userinfo';
 
     /** @var string Path to the JSON file that stores WeChat bindings */
     private static $dataFile;
@@ -73,6 +73,12 @@ class WeChatAuth
     /**
      * Build the WeChat OAuth authorize URL that the user will be redirected to.
      *
+     * Uses the Official Account (公众号) OAuth2 endpoint:
+     *   /connect/oauth2/authorize
+     *
+     * - On PC: WeChat automatically shows a QR code page for scanning.
+     * - On mobile (inside WeChat): Directly shows the authorization page.
+     *
      * @return string|null Full URL or null if disabled
      */
     public static function getAuthorizeUrl()
@@ -84,14 +90,14 @@ class WeChatAuth
         $state = static::generateState();
         $params = [
             'appid'         => static::$appId,
-            'redirect_uri'  => urlencode(static::$redirectUri),
+            'redirect_uri'  => static::$redirectUri,
             'response_type' => 'code',
             'scope'         => static::$scope,
             'state'         => $state,
         ];
 
         $query = http_build_query($params);
-        return static::$openBaseurl . '/connect/qrconnect?' . $query . '#wechat_redirect';
+        return static::$openBaseurl . '/connect/oauth2/authorize?' . $query . '#wechat_redirect';
     }
 
     /**
@@ -788,6 +794,52 @@ class WeChatAuth
         unset($_SESSION['wechat_logged_in'],
               $_SESSION['wechat_username'],
               $_SESSION['wechat_user']);
+    }
+
+    // -----------------------------------------------------------------------
+    //  Device detection
+    // -----------------------------------------------------------------------
+
+    /**
+     * Check if the request comes from inside WeChat's built-in browser.
+     *
+     * @return bool
+     */
+    public static function isWeChatBrowser()
+    {
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        return stripos($ua, 'MicroMessenger') !== false;
+    }
+
+    /**
+     * Check if the request comes from a mobile device.
+     *
+     * @return bool
+     */
+    public static function isMobile()
+    {
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        return preg_match('/Android|iPhone|iPad|iPod|Windows Phone|Mobile/i', $ua) > 0;
+    }
+
+    /**
+     * Determine the best login approach based on the device.
+     *
+     * - PC browser: Show QR code (redirect to WeChat OAuth, which displays QR)
+     * - Mobile + inside WeChat: Direct redirect (seamless authorization)
+     * - Mobile + outside WeChat: Show "please open in WeChat" message
+     *
+     * @return string 'qr_code' | 'direct' | 'open_in_wechat'
+     */
+    public static function getLoginMode()
+    {
+        if (static::isWeChatBrowser()) {
+            return 'direct';
+        }
+        if (static::isMobile()) {
+            return 'open_in_wechat';
+        }
+        return 'qr_code';
     }
 
     // -----------------------------------------------------------------------
