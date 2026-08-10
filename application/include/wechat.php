@@ -288,6 +288,59 @@ class WeChatAuth
     }
 
     /**
+     * Get server status info via SOAP command "server info".
+     *
+     * Parses the AzerothCore output to extract:
+     *   - revision / build info
+     *   - connected players count
+     *   - characters in world
+     *   - connection peak
+     *   - server uptime
+     *   - update time diff
+     *
+     * @return array|false Server status array or false on failure
+     */
+    public static function getServerStatus()
+    {
+        $result = static::soapCommand('server info');
+        if (!$result['success']) {
+            return false;
+        }
+
+        $raw = $result['message'];
+        $status = [
+            'revision'       => '',
+            'online_players' => 0,
+            'characters'     => 0,
+            'peak'           => 0,
+            'uptime'         => '',
+            'update_time'    => '',
+            'raw'            => $raw,
+        ];
+
+        // Parse: Connected players: 0. Characters in world: 0.
+        if (preg_match('/Connected players:\s*(\d+)/i', $raw, $m)) {
+            $status['online_players'] = (int)$m[1];
+        }
+        if (preg_match('/Characters in world:\s*(\d+)/i', $raw, $m)) {
+            $status['characters'] = (int)$m[1];
+        }
+        if (preg_match('/Connection peak:\s*(\d+)/i', $raw, $m)) {
+            $status['peak'] = (int)$m[1];
+        }
+        if (preg_match('/运行时间:\s*(.+)/i', $raw, $m)) {
+            $status['uptime'] = trim($m[1]);
+        } elseif (preg_match('/Uptime:\s*(.+)/i', $raw, $m)) {
+            $status['uptime'] = trim($m[1]);
+        }
+        if (preg_match('/AzerothCore\s+(.+)/i', $raw, $m)) {
+            $status['revision'] = trim($m[1]);
+        }
+
+        return $status;
+    }
+
+    /**
      * Check if a game account exists by attempting a read-only SOAP command.
      *
      * Uses `account set addon {username} {current_expansion}` which succeeds

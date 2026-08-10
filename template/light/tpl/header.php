@@ -132,6 +132,89 @@
             border-radius: 4px;
             text-align: center;
         }
+        /* Server Status Card */
+        .server-status-card {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 12px;
+            padding: 24px;
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+        .server-status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .server-status-header h4 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .server-status-header h4 i {
+            margin-right: 8px;
+            color: #4facfe;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .status-badge i {
+            font-size: 8px;
+        }
+        .status-online {
+            background: rgba(7, 193, 96, 0.2);
+            color: #07c160;
+            border: 1px solid rgba(7, 193, 96, 0.3);
+        }
+        .status-offline {
+            background: rgba(220, 53, 69, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+        .server-status-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        @media (max-width: 576px) {
+            .server-status-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+        }
+        .status-item {
+            text-align: center;
+            padding: 16px 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+        .status-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .status-icon {
+            font-size: 20px;
+            color: #4facfe;
+            margin-bottom: 8px;
+        }
+        .status-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.2;
+        }
+        .status-label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>

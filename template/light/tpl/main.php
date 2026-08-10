@@ -2,14 +2,10 @@
 /**
  * Main Template — WeChat-Only Mode (Light Theme)
  *
- * This template replaces the original main.php which contained a
- * username/password registration form. In WeChat-only mode:
- *
- *   - Not logged in: show "Login with WeChat" button
- *   - Logged in: show account info + "Reset Password" button
- *   - No registration form
- *   - No change password modal
- *   - Password reset is on a separate page (wechat_reset_password.php)
+ * Homepage shows:
+ *   1. Server status (online players, uptime, etc.) via SOAP
+ *   2. WeChat login button (or account info if logged in)
+ *   3. Connection guide & contact tabs
  *
  * @author Amin Mahmoudi (MasterkinG)
  **/
@@ -17,6 +13,10 @@ require_once 'header.php';
 
 $wxLoggedIn = WeChatAuth::isLoggedIn();
 $wxUser     = WeChatAuth::getCurrentUser();
+
+// Get server status via SOAP
+$serverStatus = WeChatAuth::getServerStatus();
+$serverOnline = $serverStatus !== false;
 ?>
 
 <div class="row">
@@ -55,8 +55,50 @@ $wxUser     = WeChatAuth::getCurrentUser();
                 </div>
             <?php endif; ?>
 
+            <!-- ===== Server Status Card ===== -->
+            <div class="server-status-card">
+                <div class="server-status-header">
+                    <h4><i class="fas fa-server"></i> <?= lang('server_status') ?: '服务器状态' ?></h4>
+                    <span class="status-badge <?= $serverOnline ? 'status-online' : 'status-offline' ?>">
+                        <?= $serverOnline
+                            ? '<i class="fas fa-circle"></i> ' . (lang('online') ?: '在线')
+                            : '<i class="fas fa-circle"></i> ' . (lang('offline') ?: '离线') ?>
+                    </span>
+                </div>
+
+                <?php if ($serverOnline): ?>
+                <div class="server-status-grid">
+                    <div class="status-item">
+                        <div class="status-icon"><i class="fas fa-users"></i></div>
+                        <div class="status-value"><?= $serverStatus['online_players'] ?></div>
+                        <div class="status-label"><?= lang('online_players') ?: '在线玩家' ?></div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon"><i class="fas fa-user-friends"></i></div>
+                        <div class="status-value"><?= $serverStatus['characters'] ?></div>
+                        <div class="status-label"><?= lang('characters_in_world') ?: '世界角色' ?></div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="status-value"><?= $serverStatus['peak'] ?></div>
+                        <div class="status-label"><?= lang('peak_players') ?: '最高在线' ?></div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-icon"><i class="fas fa-clock"></i></div>
+                        <div class="status-value" style="font-size: 14px; padding-top: 8px;"><?= htmlspecialchars($serverStatus['uptime']) ?></div>
+                        <div class="status-label"><?= lang('uptime') ?: '运行时间' ?></div>
+                    </div>
+                </div>
+                <?php else: ?>
+                <div style="padding: 20px; text-align: center; color: #999;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 32px;"></i>
+                    <p style="margin-top: 10px;"><?= lang('server_offline_msg') ?: '无法连接到游戏服务器' ?></p>
+                </div>
+                <?php endif; ?>
+            </div>
+
             <!-- Navigation tabs -->
-            <nav>
+            <nav style="margin-top: 20px;">
                 <div class="nav nav-tabs nav-fill" id="nav-tab" role="tablist">
                     <a class="nav-item nav-link active" id="nav-login-tab" data-toggle="tab"
                        href="#nav-login" role="tab" aria-selected="true">
@@ -127,15 +169,25 @@ $wxUser     = WeChatAuth::getCurrentUser();
                         </div>
 
                     <?php else: ?>
-                        <!-- ===== Not Logged In: Show WeChat Login Button ===== -->
+                        <!-- ===== Not Logged In: Show QR Code for WeChat Login ===== -->
                         <div class="wechat-login-section">
                             <?php
                             $loginMode = WeChatAuth::getLoginMode();
                             $authUrl = WeChatAuth::getAuthorizeUrl();
+                            $baseUrl = get_config('baseurl');
+                            // QR code API for the site URL
+                            $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($authUrl ?: $baseUrl);
                             ?>
 
-                            <?php if ($loginMode === 'open_in_wechat'): ?>
-                                <!-- Mobile but not in WeChat browser -->
+                            <?php if ($loginMode === 'direct'): ?>
+                                <!-- Inside WeChat browser: auto-redirect to OAuth -->
+                                <script>
+                                window.location.href = <?= json_encode($authUrl) ?>;
+                                </script>
+                                <p><?= lang('wechat_redirecting') ?: '正在跳转微信登录...' ?></p>
+
+                            <?php elseif ($loginMode === 'open_in_wechat'): ?>
+                                <!-- Mobile but not in WeChat browser: show QR code -->
                                 <h3>
                                     <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
                                     <?= lang('wechat_login_title') ?: '请在微信中打开' ?>
@@ -143,40 +195,36 @@ $wxUser     = WeChatAuth::getCurrentUser();
                                 <p>
                                     <?= lang('wechat_open_in_wechat_hint') ?: '请使用微信扫描下方二维码，在微信中打开本页面完成登录。' ?>
                                 </p>
-                                <div style="text-align: center; padding: 30px 0;">
-                                    <div style="display: inline-block; padding: 20px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                                        <p style="font-size: 14px; color: #999; margin-bottom: 10px;">
-                                            <i class="fas fa-mobile-alt"></i>
-                                            <?= lang('wechat_scan_to_open') ?: '用微信扫码打开' ?>
-                                        </p>
-                                        <p style="font-size: 60px; color: var(--wechat-green);">
-                                            <i class="fab fa-weixin"></i>
-                                        </p>
-                                        <p style="font-size: 13px; color: #999;">
-                                            <?= lang('wechat_open_url') ?: '或在微信中访问：' ?><br>
-                                            <code style="word-break: break-all; font-size: 11px;"><?= htmlspecialchars(get_config('baseurl')) ?></code>
-                                        </p>
-                                    </div>
+                                <div style="text-align: center; padding: 20px 0;">
+                                    <img src="<?= htmlspecialchars($qrUrl) ?>" alt="QR Code"
+                                         style="width: 200px; height: 200px; border-radius: 12px; border: 2px solid var(--wechat-green);"
+                                         onerror="this.style.display='none'">
+                                    <p style="font-size: 13px; color: #999; margin-top: 12px;">
+                                        <?= lang('wechat_open_url') ?: '或在微信中访问：' ?><br>
+                                        <code style="word-break: break-all; font-size: 11px;"><?= htmlspecialchars($baseUrl) ?></code>
+                                    </p>
                                 </div>
+
                             <?php else: ?>
-                                <!-- PC browser or WeChat browser: show login button -->
+                                <!-- PC browser: show QR code for WeChat scan -->
                                 <h3>
                                     <i class="fab fa-weixin" style="color: var(--wechat-green);"></i>
-                                    <?= $loginMode === 'direct'
-                                        ? (lang('wechat_login_title') ?: '微信登录')
-                                        : (lang('wechat_login_title') ?: '微信扫码登录') ?>
+                                    <?= lang('wechat_login_title') ?: '微信扫码登录' ?>
                                 </h3>
                                 <p>
-                                    <?= $loginMode === 'direct'
-                                        ? (lang('wechat_login_hint_mobile') ?: '点击下方按钮使用微信登录，注册后将自动创建游戏账号。')
-                                        : (lang('wechat_login_hint') ?: '请使用微信扫描二维码登录，注册后将自动创建游戏账号。') ?>
+                                    <?= lang('wechat_login_hint') ?: '请使用微信扫描下方二维码登录，注册后将自动创建游戏账号。' ?>
                                 </p>
 
-                                <?php if (get_config('wechat_enabled')): ?>
-                                    <a href="<?= $authUrl ?>" class="btn-wechat">
-                                        <i class="fab fa-weixin"></i>
-                                        <?= lang('wechat_login') ?: '微信登录' ?>
-                                    </a>
+                                <?php if (get_config('wechat_enabled') && $authUrl): ?>
+                                    <div style="text-align: center; padding: 20px 0;">
+                                        <img src="<?= htmlspecialchars($qrUrl) ?>" alt="微信登录二维码"
+                                             style="width: 200px; height: 200px; border-radius: 12px; border: 2px solid var(--wechat-green); box-shadow: 0 2px 12px rgba(0,0,0,0.1);"
+                                             onerror="this.style.display='none'">
+                                        <p style="font-size: 13px; color: #999; margin-top: 12px;">
+                                            <i class="fab fa-weixin"></i>
+                                            <?= lang('wechat_scan_qr_hint') ?: '打开微信扫一扫，即可登录游戏' ?>
+                                        </p>
+                                    </div>
                                 <?php else: ?>
                                     <div class="alert alert-warning">
                                         <?= lang('wechat_not_enabled') ?: '微信登录功能未启用，请在配置文件中设置 wechat_enabled = true' ?>
@@ -184,7 +232,7 @@ $wxUser     = WeChatAuth::getCurrentUser();
                                 <?php endif; ?>
                             <?php endif; ?>
 
-                            <div class="soap-notice" style="margin-top: 30px;">
+                            <div class="soap-notice" style="margin-top: 20px;">
                                 <i class="fas fa-shield-alt"></i>
                                 <?= lang('security_notice') ?: '本站仅支持微信登录，不支持密码注册。账号通过 SOAP 安全创建。' ?>
                             </div>
