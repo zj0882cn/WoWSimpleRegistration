@@ -368,7 +368,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 $(function() {
-    var siteUrl = '<?= addslashes($siteUrl) ?>';
+    var siteUrl = window.location.origin;
     var provider = '<?= addslashes($oneclickProvider) ?>';
     var isMobile = <?= $isMobile ? 'true' : 'false' ?>;
 
@@ -387,8 +387,20 @@ $(function() {
     // --- Error display helper ---
     function showError(msg) {
         var el = $('#oneclickError');
-        if (msg) {
-            el.html('<i class="fas fa-exclamation-circle"></i> ' + msg).show();
+        var friendlyMsgs = {
+            'soap_create_failed': '游戏服务器连接失败，请稍后重试',
+            'soap_error': '游戏服务器连接失败，请稍后重试',
+            'mobile_auth_disabled': '登录功能未启用',
+            'invalid_phone': '手机号格式不正确',
+            'phone_required': '请输入手机号',
+            'token_required': '认证令牌缺失，请重试',
+            'numberauth_config_incomplete': '号码认证配置不完整，请联系管理员',
+            'numberauth_request_failed': '号码认证请求失败，请重试',
+            'numberauth_failed': '号码认证失败，请重试'
+        };
+        var displayMsg = friendlyMsgs[msg] || msg || '操作失败，请重试';
+        if (displayMsg) {
+            el.html('<i class="fas fa-exclamation-circle"></i> ' + displayMsg).show();
         } else {
             el.hide();
         }

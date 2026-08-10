@@ -500,14 +500,26 @@ class MobileAuth
             return ['success' => false, 'message' => 'empty command'];
         }
 
+        $soapOptions = [
+            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
+            'uri'      => get_config('soap_uri'),
+            'style'    => get_config('soap_style'),
+            'login'    => get_config('soap_username'),
+            'password' => get_config('soap_password'),
+        ];
+
+        // Auto-detect proxy from environment (needed in sandbox/development)
+        $proxy = getenv('http_proxy') ?: getenv('HTTP_PROXY');
+        if (!empty($proxy) && stripos($proxy, '127.0.0.1') !== false) {
+            $proxyParts = parse_url($proxy);
+            if (!empty($proxyParts['host']) && !empty($proxyParts['port'])) {
+                $soapOptions['proxy_host'] = $proxyParts['host'];
+                $soapOptions['proxy_port'] = $proxyParts['port'];
+            }
+        }
+
         try {
-            $conn = new SoapClient(NULL, [
-                'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
-                'uri'      => get_config('soap_uri'),
-                'style'    => get_config('soap_style'),
-                'login'    => get_config('soap_username'),
-                'password' => get_config('soap_password'),
-            ]);
+            $conn = new SoapClient(NULL, $soapOptions);
 
             $result = $conn->executeCommand(new SoapParam($command, 'command'));
             unset($conn);

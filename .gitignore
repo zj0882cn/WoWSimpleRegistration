@@ -39,3 +39,6 @@ desktop.ini
 # ---- Logs ----
 *.log
 /error_log
+
+# ---- Production config backup ----
+application/config/config.production.php.bak
