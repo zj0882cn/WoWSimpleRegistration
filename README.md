@@ -2,12 +2,14 @@
 
 基于 [WoWSimpleRegistration](https://github.com/masterking32/WoWSimpleRegistration) 改造，采用**手机号 + SMS 验证码 + 一键登录**认证方式，无需微信公众号认证，无需数据库连接。所有账号操作通过 SOAP 命令完成。
 
-## 分支说明
+## 仓库说明
 
-| 分支 | 说明 |
+微信版和手机版已拆分为两个独立仓库，避免混淆：
+
+| 仓库 | 说明 |
 |------|------|
-| `master` | 微信扫码登录版（需公众号认证） |
-| `mobile-login` | **当前分支** — 手机号认证版（SMS + 一键登录） |
+| **WoWSimpleRegistration**（本仓库） | 手机号认证版（SMS + 一键登录） |
+| [WoWSimpleRegistration-WeChat](https://github.com/zj0882cn/WoWSimpleRegistration-WeChat) | 微信扫码登录版（需公众号认证） |
 
 ## 核心特性
 
@@ -515,10 +517,12 @@ composer install --no-dev --ignore-platform-reqs
 apt-get install php-soap php-curl php-gd php-gmp php-mbstring
 ```
 
-### Q: 如何切换到微信登录版
+### Q: 如何使用微信登录版
+
+微信版已独立为单独仓库：
 
 ```bash
-git checkout master
+git clone https://github.com/zj0882cn/WoWSimpleRegistration-WeChat.git
 ```
 
 微信版需要微信公众号认证和备案域名。
