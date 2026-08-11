@@ -64,6 +64,17 @@ return [
     'contact_text'             => 'If you have questions, please contact us:',
     'server_status'            => 'Server Status',
     'top_players'              => 'Top Players',
+    'account_management'       => 'Account',
+    'account_info_tab'         => 'Profile',
+    'account_details'          => 'Account Details',
+    'account_level'            => 'Account Level',
+    'account_last_login'       => 'Last Login',
+    'account_expansion'        => 'Expansion',
+    'account_status'           => 'Status',
+    'bound_phone'              => 'Bound Phone',
+    'game_realmlist'           => 'Game Server',
+    'active'                   => 'Active',
+    'not_available'            => 'N/A',
 
     // How to connect
     'realmlist'                => 'Realmlist',

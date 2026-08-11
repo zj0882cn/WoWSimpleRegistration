@@ -611,6 +611,64 @@ class MobileAuth
         return true;
     }
 
+    /**
+     * Get account information via SOAP command "account info".
+     *
+     * Returns parsed data: username, expansion, GM level, last login, etc.
+     *
+     * @param string $username
+     * @return array|false
+     */
+    public static function getAccountInfo($username)
+    {
+        $username = strtoupper($username);
+        $result = static::soapCommand("account info {$username}");
+
+        if (!$result['success']) {
+            return false;
+        }
+
+        $raw = $result['message'];
+        $info = [
+            'username'    => $username,
+            'expansion'   => '',
+            'gm_level'    => '',
+            'last_login'  => '',
+            'last_ip'     => '',
+            'online'      => false,
+            'characters'  => 0,
+            'raw'         => $raw,
+        ];
+
+        // Parse various output formats (EN / CN)
+        if (preg_match('/Expansion:\s*(\S+)/i', $raw, $m)) {
+            $expMap = ['0' => 'Classic', '1' => 'TBC', '2' => 'WotLK', '3' => 'Cata'];
+            $info['expansion'] = $expMap[$m[1]] ?? $m[1];
+        }
+        if (preg_match('/Permission Level:\s*(\S+)/i', $raw, $m)) {
+            $info['gm_level'] = $m[1];
+        } elseif (preg_match('/Security Level:\s*(\S+)/i', $raw, $m)) {
+            $info['gm_level'] = $m[1];
+        }
+        if (preg_match('/Last Login:\s*(.+)/i', $raw, $m)) {
+            $info['last_login'] = trim($m[1]);
+        } elseif (preg_match('/上次登录:\s*(.+)/i', $raw, $m)) {
+            $info['last_login'] = trim($m[1]);
+        }
+        if (preg_match('/Last IP:\s*(\S+)/i', $raw, $m)) {
+            $info['last_ip'] = $m[1];
+        }
+        if (preg_match('/Characters:\s*(\d+)/i', $raw, $m)) {
+            $info['characters'] = (int)$m[1];
+        }
+        // Check if currently online
+        if (stripos($raw, 'is online') !== false || stripos($raw, '在线') !== false) {
+            $info['online'] = true;
+        }
+
+        return $info;
+    }
+
     // -----------------------------------------------------------------------
     //  Binding storage — JSON file (no database required)
     // -----------------------------------------------------------------------
@@ -689,11 +747,22 @@ class MobileAuth
      *
      * @param string $phone
      * @param string $username  Game account username
+     * @param string $password  Plaintext password (will be hashed) — optional
      * @return bool
      */
-    public static function saveBinding($phone, $username)
+    public static function saveBinding($phone, $username, $password = '')
     {
         $bindings = static::loadBindings();
+
+        // Preserve existing password hash if no new password provided
+        $existingHash = '';
+        foreach ($bindings as $entry) {
+            if ($entry['phone'] === $phone ||
+                strtoupper($entry['username']) === strtoupper($username)) {
+                $existingHash = $entry['password_hash'] ?? '';
+                break;
+            }
+        }
 
         // Remove any existing binding for this phone or username
         $bindings = array_filter($bindings, function ($entry) use ($phone, $username) {
@@ -701,14 +770,82 @@ class MobileAuth
                    strtoupper($entry['username']) !== strtoupper($username);
         });
 
-        // Add the new binding
-        $bindings[] = [
+        // Build new binding entry
+        $newEntry = [
             'phone'     => $phone,
             'username'  => strtoupper($username),
             'bind_time' => date('Y-m-d H:i:s'),
         ];
 
+        // Store password hash
+        if (!empty($password)) {
+            $newEntry['password_hash'] = password_hash($password, PASSWORD_BCRYPT);
+        } elseif (!empty($existingHash)) {
+            $newEntry['password_hash'] = $existingHash;
+        }
+
+        $bindings[] = $newEntry;
+
         return static::saveBindings(array_values($bindings));
+    }
+
+    /**
+     * Update the stored password hash for a given username.
+     *
+     * Called after successful password change or reset.
+     *
+     * @param string $username
+     * @param string $newPassword  Plaintext new password
+     * @return bool
+     */
+    public static function updatePasswordHash($username, $newPassword)
+    {
+        $username  = strtoupper($username);
+        $bindings  = static::loadBindings();
+        $updated   = false;
+
+        foreach ($bindings as &$entry) {
+            if (strtoupper($entry['username']) === $username) {
+                $entry['password_hash'] = password_hash($newPassword, PASSWORD_BCRYPT);
+                $entry['pw_updated_at'] = date('Y-m-d H:i:s');
+                $updated = true;
+                break;
+            }
+        }
+        unset($entry);
+
+        if ($updated) {
+            static::saveBindings(array_values($bindings));
+        }
+        return $updated;
+    }
+
+    /**
+     * Verify a plaintext password against the stored hash.
+     *
+     * @param string $username
+     * @param string $password  Plaintext password to verify
+     * @return array ['verified' => bool, 'has_hash' => bool]
+     */
+    public static function verifyPasswordHash($username, $password)
+    {
+        $username = strtoupper($username);
+        $bindings = static::loadBindings();
+
+        foreach ($bindings as $entry) {
+            if (strtoupper($entry['username']) === $username) {
+                if (!empty($entry['password_hash'])) {
+                    return [
+                        'verified' => password_verify($password, $entry['password_hash']),
+                        'has_hash' => true,
+                    ];
+                }
+                // No hash stored (old binding) — cannot verify
+                return ['verified' => false, 'has_hash' => false];
+            }
+        }
+        // No binding found
+        return ['verified' => false, 'has_hash' => false];
     }
 
     /**
@@ -823,8 +960,8 @@ class MobileAuth
             static::soapCommand("account set addon {$username} " . get_config('expansion'));
         }
 
-        // Save the binding
-        static::saveBinding($phone, $username);
+        // Save the binding (with password hash)
+        static::saveBinding($phone, $username, $password);
 
         // Log in
         $_SESSION['mobile_logged_in'] = true;
@@ -946,9 +1083,8 @@ class MobileAuth
     /**
      * Change the password for a game account using SOAP.
      *
-     * Unlike resetPassword(), this requires the user to supply the new
-     * password themselves (old password is not verifiable via SOAP, so
-     * we rely on the session being authenticated).
+     * After a successful SOAP password change, the local password hash
+     * is also updated to stay in sync.
      *
      * @param string $username
      * @param string $newPassword  User-supplied new password (6-32 chars)
@@ -981,6 +1117,9 @@ class MobileAuth
             return ['success' => false, 'message' => 'account_not_found'];
         }
 
+        // Update local password hash to stay in sync
+        static::updatePasswordHash($username, $newPassword);
+
         return [
             'success'  => true,
             'username' => $username,
@@ -991,10 +1130,15 @@ class MobileAuth
     /**
      * Change password for the currently logged-in user.
      *
-     * @param string $newPassword
+     * Verifies the old password against the stored hash before
+     * allowing the change. If no hash is stored (legacy binding),
+     * the change is allowed without verification and a hash is stored.
+     *
+     * @param string $oldPassword  User's current password
+     * @param string $newPassword  Desired new password
      * @return array
      */
-    public static function changeMyPassword($newPassword)
+    public static function changeMyPassword($oldPassword, $newPassword)
     {
         if (!static::isLoggedIn()) {
             return ['success' => false, 'message' => 'not_logged_in'];
@@ -1003,6 +1147,12 @@ class MobileAuth
         $username = $_SESSION['mobile_username'] ?? '';
         if (empty($username)) {
             return ['success' => false, 'message' => 'no_bound_account'];
+        }
+
+        // Verify old password against stored hash
+        $verify = static::verifyPasswordHash($username, $oldPassword);
+        if ($verify['has_hash'] && !$verify['verified']) {
+            return ['success' => false, 'message' => 'wrong_old_password'];
         }
 
         return static::changePassword($username, $newPassword);
@@ -1298,8 +1448,8 @@ class MobileAuth
             static::soapCommand("account set addon {$username} " . get_config('expansion'));
         }
 
-        // Save the binding
-        static::saveBinding($phone, $username);
+        // Save the binding (with password hash)
+        static::saveBinding($phone, $username, $password);
 
         // Log in
         $_SESSION['mobile_logged_in'] = true;

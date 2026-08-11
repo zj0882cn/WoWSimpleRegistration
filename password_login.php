@@ -51,11 +51,14 @@ if (!MobileAuth::accountExists(strtoupper($username))) {
     exit;
 }
 
-// Verify password via SOAP: try to login with the account
-// AzerothCore SOAP doesn't have a direct "verify password" command,
-// but we can check if the account exists and is accessible.
-// The actual password verification happens when the user logs into the game client.
-// For web login, we verify the account exists and set the session.
+// Verify password against stored hash
+$pwVerify = MobileAuth::verifyPasswordHash($username, $password);
+if ($pwVerify['has_hash'] && !$pwVerify['verified']) {
+    echo json_encode(['success' => false, 'message' => 'wrong_password']);
+    exit;
+}
+// If no hash stored (legacy binding), skip verification — user can still log in
+// and the hash will be stored on next password change/reset
 
 // Set session — the user is now logged in on the website
 $_SESSION['mobile_logged_in'] = true;

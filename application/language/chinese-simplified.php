@@ -64,6 +64,17 @@ return [
     'contact_text'             => '如有问题，请通过以下方式联系我们：',
     'server_status'            => '服务器状态',
     'top_players'              => '排行榜',
+    'account_management'       => '账号管理',
+    'account_info_tab'         => '账户',
+    'account_details'          => '账户详情',
+    'account_level'            => '账号等级',
+    'account_last_login'       => '上次登录',
+    'account_expansion'        => '扩展包',
+    'account_status'           => '账号状态',
+    'bound_phone'              => '绑定手机',
+    'game_realmlist'           => '游戏服务器',
+    'active'                   => '正常',
+    'not_available'            => '暂无',
 
     // How to connect
     'realmlist'                => '服务器地址',

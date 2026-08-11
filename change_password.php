@@ -43,26 +43,33 @@ $showResult = false;
 
 // Handle change password request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirm_change'])) {
+    $oldPass     = trim($_POST['old_password'] ?? '');
     $newPass     = trim($_POST['new_password'] ?? '');
     $confirmPass = trim($_POST['confirm_password'] ?? '');
 
-    if (strlen($newPass) < 6 || strlen($newPass) > 32) {
-        $errorMsg = '密码需6-32位字符';
+    if (empty($oldPass)) {
+        $errorMsg = '请输入旧密码';
+    } elseif (strlen($newPass) < 6 || strlen($newPass) > 32) {
+        $errorMsg = '新密码需6-32位字符';
     } elseif ($newPass !== $confirmPass) {
-        $errorMsg = '两次输入的密码不一致';
+        $errorMsg = '两次输入的新密码不一致';
+    } elseif ($oldPass === $newPass) {
+        $errorMsg = '新密码不能与旧密码相同';
     } else {
-        $result = MobileAuth::changeMyPassword($newPass);
+        $result = MobileAuth::changeMyPassword($oldPass, $newPass);
         if ($result['success']) {
             $successMsg = '密码修改成功！';
             $showResult = true;
         } else {
             $msg = $result['message'];
-            if ($msg === 'account_not_found') {
+            if ($msg === 'wrong_old_password') {
+                $errorMsg = '旧密码不正确';
+            } elseif ($msg === 'account_not_found') {
                 $errorMsg = '游戏账号不存在';
             } elseif ($msg === 'soap_error') {
                 $errorMsg = '服务器连接失败，请稍后重试';
             } elseif ($msg === 'invalid_password') {
-                $errorMsg = '密码需6-32位字符';
+                $errorMsg = '新密码需6-32位字符';
             } elseif ($msg === 'not_logged_in') {
                 $errorMsg = '请先登录';
             } else {
@@ -167,6 +174,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirm_change'])) {
 
             <form method="POST" action="">
                 <input type="hidden" name="confirm_change" value="1">
+                <div class="form-group">
+                    <label><i class="fas fa-lock"></i> 旧密码</label>
+                    <input type="password" name="old_password" class="form-control"
+                           placeholder="请输入当前密码" required
+                           autocomplete="current-password">
+                </div>
                 <div class="form-group">
                     <label><i class="fas fa-lock"></i> 新密码（6-32位）</label>
                     <input type="password" name="new_password" class="form-control"

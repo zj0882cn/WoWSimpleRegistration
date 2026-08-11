@@ -143,8 +143,19 @@ $siteUrl          = get_config('baseurl') ?: '';
                     <a class="nav-item nav-link active" id="nav-login-tab" data-toggle="tab"
                        href="#nav-login" role="tab" aria-selected="true">
                         <i class="fas fa-sign-in-alt"></i>
-                        <?= lang('login') ?: '登录' ?>
+                        <?php if ($mbLoggedIn): ?>
+                            <?= lang('account_management') ?: '账号管理' ?>
+                        <?php else: ?>
+                            <?= lang('login') ?: '登录' ?>
+                        <?php endif; ?>
                     </a>
+                    <?php if ($mbLoggedIn): ?>
+                    <a class="nav-item nav-link" id="nav-accountinfo-tab" data-toggle="tab"
+                       href="#nav-accountinfo" role="tab" aria-selected="false">
+                        <i class="fas fa-user-circle"></i>
+                        <?= lang('account_info_tab') ?: '账户' ?>
+                    </a>
+                    <?php endif; ?>
                     <a class="nav-item nav-link" id="nav-howtoconnect-tab" data-toggle="tab"
                        href="#nav-howtoconnect" role="tab" aria-selected="false">
                         <i class="fas fa-plug"></i>
@@ -172,23 +183,15 @@ $siteUrl          = get_config('baseurl') ?: '';
                      aria-labelledby="nav-login-tab">
 
                     <?php if ($mbLoggedIn && $mbUser): ?>
-                        <!-- ===== Logged In: Show Account Info ===== -->
+                        <!-- ===== Logged In: Account Management ===== -->
                         <div class="mobile-login-section" style="padding: 20px;">
                             <h3>
-                                <i class="fas fa-check-circle" style="color: var(--brand-blue);"></i>
-                                <?= lang('welcome_back') ?: '欢迎回来' ?>
+                                <i class="fas fa-cog" style="color: var(--brand-blue);"></i>
+                                <?= lang('account_management') ?: '账号管理' ?>
                             </h3>
-                            <div class="account-info-card">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <span class="label d-block"><?= lang('account') ?: '游戏账号' ?></span>
-                                        <span class="value"><?= htmlspecialchars($mbUser['username'] ?? '') ?></span>
-                                    </div>
-                                    <div class="col-md-6 text-md-right">
-                                        <span class="label d-block"><?= lang('phone') ?: '手机号' ?></span>
-                                        <span class="value" style="font-size: 14px;"><?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'] ?? '')) ?></span>
-                                    </div>
-                                </div>
+                            <div class="account-info-card" style="text-align: center; padding: 20px;">
+                                <span class="label d-block"><?= lang('account') ?: '游戏账号' ?></span>
+                                <span class="value" style="font-size: 18px;"><?= htmlspecialchars($mbUser['username'] ?? '') ?></span>
                             </div>
 
                             <div class="text-center" style="margin-top: 20px;">
@@ -211,7 +214,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                             <div class="soap-notice">
                                 <i class="fas fa-info-circle"></i>
-                                修改密码：输入新密码直接修改。忘记密码：需手机短信验证后重置。
+                                修改密码：需输入旧密码验证后修改。忘记密码：需手机短信验证后重置。
                             </div>
                         </div>
 
@@ -337,6 +340,164 @@ $siteUrl          = get_config('baseurl') ?: '';
                         </div>
                     <?php endif; ?>
                 </div>
+
+                <?php if ($mbLoggedIn && $mbUser): ?>
+                <!-- ===== Account Info Tab ===== -->
+                <div class="tab-pane fade" id="nav-accountinfo" role="tabpanel"
+                     aria-labelledby="nav-accountinfo-tab">
+                    <div class="content_box1">
+                        <h5><i class="fas fa-user-circle"></i> <?= lang('account_details') ?: '账户详情' ?></h5>
+                        <hr>
+
+                        <?php
+                        // Try to get account info from SOAP
+                        $acctInfo = MobileAuth::getAccountInfo($mbUser['username']);
+                        ?>
+
+                        <div class="account-info-card" style="padding: 20px; margin-bottom: 15px;">
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-user"></i>
+                                        <?= lang('account') ?: '游戏账号' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value" style="font-family: 'Courier New', monospace; font-weight: 700;">
+                                        <?= htmlspecialchars($mbUser['username'] ?? '') ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-phone"></i>
+                                        <?= lang('bound_phone') ?: '绑定手机' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value" style="font-size: 14px;">
+                                        <?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'] ?? '')) ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-gamepad"></i>
+                                        <?= lang('game_version') ?: '游戏版本' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value"><?= htmlspecialchars(get_config('game_version')) ?></span>
+                                </div>
+                            </div>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-server"></i>
+                                        <?= lang('game_realmlist') ?: '游戏服务器' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <code><?= htmlspecialchars(get_config('realmlist')) ?></code>
+                                </div>
+                            </div>
+
+                            <?php if ($acctInfo): ?>
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-layer-group"></i>
+                                        <?= lang('account_expansion') ?: '扩展包' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value">
+                                        <?= htmlspecialchars($acctInfo['expansion'] ?: (lang('not_available') ?: '暂无')) ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <?php if (!empty($acctInfo['gm_level'])): ?>
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-shield-alt"></i>
+                                        <?= lang('account_level') ?: '账号等级' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value"><?= htmlspecialchars($acctInfo['gm_level']) ?></span>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-clock"></i>
+                                        <?= lang('account_last_login') ?: '上次登录' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value" style="font-size: 14px;">
+                                        <?= htmlspecialchars($acctInfo['last_login'] ?: (lang('not_available') ?: '暂无')) ?>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-user-check"></i>
+                                        <?= lang('characters_in_world') ?: '角色数' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value"><?= (int)$acctInfo['characters'] ?></span>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-5">
+                                    <span class="label">
+                                        <i class="fas fa-circle"></i>
+                                        <?= lang('account_status') ?: '账号状态' ?>
+                                    </span>
+                                </div>
+                                <div class="col-7">
+                                    <?php if ($acctInfo['online']): ?>
+                                        <span class="status-badge status-online" style="font-size: 12px;">
+                                            <i class="fas fa-circle"></i> <?= lang('online') ?: '在线' ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="status-badge status-offline" style="font-size: 12px;">
+                                            <i class="fas fa-circle"></i> <?= lang('offline') ?: '离线' ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php else: ?>
+                            <div class="row">
+                                <div class="col-12" style="text-align: center; color: #999; font-size: 13px;">
+                                    <i class="fas fa-info-circle"></i>
+                                    <?= lang('server_offline_msg') ?: '无法获取详细信息，服务器可能离线' ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="soap-notice">
+                            <i class="fas fa-shield-alt"></i>
+                            <?= lang('security_notice') ?: '账号信息通过 SOAP 安全获取，请妥善保管你的账号密码。' ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
 
                 <!-- ===== How to Connect Tab ===== -->
                 <div class="tab-pane fade" id="nav-howtoconnect" role="tabpanel"
@@ -477,6 +638,7 @@ $(function() {
             'password_required': '请输入密码',
             'username_required': '请输入游戏账号',
             'account_not_found': '账号不存在，请检查或先注册',
+            'wrong_password': '密码错误，请重新输入',
             'token_required': '认证令牌缺失，请重试',
             'numberauth_config_incomplete': '号码认证配置不完整，请联系管理员',
             'numberauth_request_failed': '号码认证请求失败，请重试',
