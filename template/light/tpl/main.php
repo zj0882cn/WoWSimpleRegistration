@@ -350,31 +350,45 @@ $siteUrl          = get_config('baseurl') ?: '';
                         <hr>
 
                         <?php
-                        // Try to get account info from SOAP
-                        $acctInfo = MobileAuth::getAccountInfo($mbUser['username']);
+                        // Get character list (includes account ID) from SOAP
+                        $charList = MobileAuth::getAccountCharacters($mbUser['username']);
+                        $soapOk = $charList !== false;
+                        $charCount = ($charList && !empty($charList['characters'])) ? count($charList['characters']) : 0;
                         ?>
 
-                        <div class="account-info-card" style="padding: 20px; margin-bottom: 15px;">
-                            <div class="row" style="margin-bottom: 12px;">
+                        <!-- ===== Game Account Section ===== -->
+                        <div class="account-info-card" style="padding: 20px; margin-bottom: 20px;">
+                            <h6 style="color: var(--brand-blue); margin-bottom: 15px;">
+                                <i class="fas fa-id-card"></i> <?= lang('account') ?: '游戏账号' ?>
+                            </h6>
+
+                            <div class="row" style="margin-bottom: 12px; align-items: center;">
                                 <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-user"></i>
-                                        <?= lang('account') ?: '游戏账号' ?>
-                                    </span>
+                                    <span class="label"><i class="fas fa-user"></i> <?= lang('account') ?: '账号' ?></span>
                                 </div>
                                 <div class="col-7">
-                                    <span class="value" style="font-family: 'Courier New', monospace; font-weight: 700;">
+                                    <span class="value" style="font-family: 'Courier New', monospace; font-weight: 700; font-size: 16px;">
                                         <?= htmlspecialchars($mbUser['username'] ?? '') ?>
                                     </span>
                                 </div>
                             </div>
 
+                            <?php if ($soapOk && !empty($charList['account_id'])): ?>
                             <div class="row" style="margin-bottom: 12px;">
                                 <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-phone"></i>
-                                        <?= lang('bound_phone') ?: '绑定手机' ?>
+                                    <span class="label"><i class="fas fa-hashtag"></i> <?= lang('account_id') ?: '账号ID' ?></span>
+                                </div>
+                                <div class="col-7">
+                                    <span class="value" style="font-size: 14px;">
+                                        <?= (int)$charList['account_id'] ?>
                                     </span>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="row" style="margin-bottom: 12px;">
+                                <div class="col-5">
+                                    <span class="label"><i class="fas fa-phone"></i> <?= lang('bound_phone') ?: '绑定手机' ?></span>
                                 </div>
                                 <div class="col-7">
                                     <span class="value" style="font-size: 14px;">
@@ -383,115 +397,72 @@ $siteUrl          = get_config('baseurl') ?: '';
                                 </div>
                             </div>
 
-                            <div class="row" style="margin-bottom: 12px;">
+                            <div class="row" style="margin-bottom: 0;">
                                 <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-gamepad"></i>
-                                        <?= lang('game_version') ?: '游戏版本' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <span class="value"><?= htmlspecialchars(get_config('game_version')) ?></span>
-                                </div>
-                            </div>
-
-                            <div class="row" style="margin-bottom: 12px;">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-server"></i>
-                                        <?= lang('game_realmlist') ?: '游戏服务器' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <code><?= htmlspecialchars(get_config('realmlist')) ?></code>
-                                </div>
-                            </div>
-
-                            <?php if ($acctInfo): ?>
-                            <div class="row" style="margin-bottom: 12px;">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-layer-group"></i>
-                                        <?= lang('account_expansion') ?: '扩展包' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <span class="value">
-                                        <?= htmlspecialchars($acctInfo['expansion'] ?: (lang('not_available') ?: '暂无')) ?>
-                                    </span>
-                                </div>
-                            </div>
-
-                            <?php if (!empty($acctInfo['gm_level'])): ?>
-                            <div class="row" style="margin-bottom: 12px;">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-shield-alt"></i>
-                                        <?= lang('account_level') ?: '账号等级' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <span class="value"><?= htmlspecialchars($acctInfo['gm_level']) ?></span>
-                                </div>
-                            </div>
-                            <?php endif; ?>
-
-                            <div class="row" style="margin-bottom: 12px;">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-clock"></i>
-                                        <?= lang('account_last_login') ?: '上次登录' ?>
-                                    </span>
+                                    <span class="label"><i class="fas fa-users"></i> <?= lang('char_count') ?: '角色数量' ?></span>
                                 </div>
                                 <div class="col-7">
                                     <span class="value" style="font-size: 14px;">
-                                        <?= htmlspecialchars($acctInfo['last_login'] ?: (lang('not_available') ?: '暂无')) ?>
+                                        <?php if ($soapOk): ?>
+                                            <?= $charCount ?>
+                                        <?php else: ?>
+                                            <span style="color: #999;">--</span>
+                                        <?php endif; ?>
                                     </span>
                                 </div>
                             </div>
-
-                            <div class="row" style="margin-bottom: 12px;">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-user-check"></i>
-                                        <?= lang('characters_in_world') ?: '角色数' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <span class="value"><?= (int)$acctInfo['characters'] ?></span>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-5">
-                                    <span class="label">
-                                        <i class="fas fa-circle"></i>
-                                        <?= lang('account_status') ?: '账号状态' ?>
-                                    </span>
-                                </div>
-                                <div class="col-7">
-                                    <?php if ($acctInfo['online']): ?>
-                                        <span class="status-badge status-online" style="font-size: 12px;">
-                                            <i class="fas fa-circle"></i> <?= lang('online') ?: '在线' ?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="status-badge status-offline" style="font-size: 12px;">
-                                            <i class="fas fa-circle"></i> <?= lang('offline') ?: '离线' ?>
-                                        </span>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            <?php else: ?>
-                            <div class="row">
-                                <div class="col-12" style="text-align: center; color: #999; font-size: 13px;">
-                                    <i class="fas fa-info-circle"></i>
-                                    <?= lang('server_offline_msg') ?: '无法获取详细信息，服务器可能离线' ?>
-                                </div>
-                            </div>
-                            <?php endif; ?>
                         </div>
 
-                        <div class="soap-notice">
+                        <!-- ===== Character List Section ===== -->
+                        <h6 style="color: var(--brand-blue); margin-bottom: 15px;">
+                            <i class="fas fa-users"></i> <?= lang('character_list') ?: '角色列表' ?>
+                            <?php if ($soapOk && $charCount > 0): ?>
+                                <span style="font-size: 13px; color: #999;">(<?= $charCount ?>)</span>
+                            <?php endif; ?>
+                        </h6>
+
+                        <?php if ($soapOk && $charCount > 0): ?>
+                            <div style="overflow-x: auto;">
+                            <table class="table table-sm" style="font-size: 14px; margin-bottom: 0;">
+                                <thead style="background: #f0f4f8;">
+                                    <tr>
+                                        <th><?= lang('char_name') ?: '角色名' ?></th>
+                                        <th><?= lang('char_race') ?: '种族' ?></th>
+                                        <th><?= lang('char_class') ?: '职业' ?></th>
+                                        <th class="text-center"><?= lang('char_level') ?: '等级' ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($charList['characters'] as $char): ?>
+                                    <tr>
+                                        <td style="font-weight: 600;"><?= htmlspecialchars($char['name']) ?></td>
+                                        <td><?= htmlspecialchars($char['race']) ?></td>
+                                        <td><?= htmlspecialchars($char['class']) ?></td>
+                                        <td class="text-center">
+                                            <span style="background: var(--brand-blue); color: #fff; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700;">
+                                                <?= (int)$char['level'] ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            </div>
+                        <?php elseif ($soapOk): ?>
+                            <div style="text-align: center; padding: 30px; color: #999;">
+                                <i class="fas fa-user-plus" style="font-size: 32px;"></i>
+                                <p style="margin-top: 10px; font-size: 13px;">
+                                    <?= lang('no_characters') ?: '暂无角色，请先登录游戏创建角色' ?>
+                                </p>
+                            </div>
+                        <?php else: ?>
+                            <div style="text-align: center; padding: 20px; color: #999; font-size: 13px;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <?= lang('server_offline_msg') ?: '无法获取角色信息，服务器可能离线' ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <div class="soap-notice" style="margin-top: 15px;">
                             <i class="fas fa-shield-alt"></i>
                             <?= lang('security_notice') ?: '账号信息通过 SOAP 安全获取，请妥善保管你的账号密码。' ?>
                         </div>
@@ -786,7 +757,9 @@ $(function() {
     });
     <?php endif; ?>
 
-    // --- Password Login (for returning users) ---
+    <?php endif; ?>
+
+    // --- Password Login (for returning users, works on both PC and Mobile) ---
     $('#pwdLoginBtn').on('click', function() {
         var username = $('#pwdUsername').val().trim();
         var password = $('#pwdPassword').val();
@@ -813,8 +786,6 @@ $(function() {
             $('#pwdLoginBtn').click();
         }
     });
-
-    <?php endif; ?>
 });
 </script>
 

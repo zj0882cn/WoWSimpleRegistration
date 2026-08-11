@@ -75,6 +75,15 @@ return [
     'game_realmlist'           => '游戏服务器',
     'active'                   => '正常',
     'not_available'            => '暂无',
+    'character_list'           => '角色列表',
+    'char_name'                => '角色名',
+    'char_race'                => '种族',
+    'char_class'               => '职业',
+    'char_level'               => '等级',
+    'char_count'               => '角色数量',
+    'no_characters'            => '暂无角色，请先登录游戏创建角色',
+    'char_online'              => '游戏中',
+    'account_id'               => '账号ID',
 
     // How to connect
     'realmlist'                => '服务器地址',

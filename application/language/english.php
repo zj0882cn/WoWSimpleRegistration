@@ -75,6 +75,15 @@ return [
     'game_realmlist'           => 'Game Server',
     'active'                   => 'Active',
     'not_available'            => 'N/A',
+    'character_list'           => 'Characters',
+    'char_name'                => 'Name',
+    'char_race'                => 'Race',
+    'char_class'               => 'Class',
+    'char_level'               => 'Level',
+    'char_count'               => 'Characters',
+    'no_characters'            => 'No characters yet. Log in to the game to create one.',
+    'char_online'              => 'In Game',
+    'account_id'               => 'Account ID',
 
     // How to connect
     'realmlist'                => 'Realmlist',

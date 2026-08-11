@@ -669,6 +669,72 @@ class MobileAuth
         return $info;
     }
 
+    /**
+     * Get character list for an account via SOAP "lookup player account".
+     *
+     * Output format from AzerothCore:
+     *   "Characters at account NAME (Id: 12)"
+     *   "Charname (GUID 2) - Race - Class - 80"
+     *
+     * @param string $username
+     * @return array|false  ['account_id' => int, 'characters' => [...]]
+     */
+    public static function getAccountCharacters($username)
+    {
+        $username = strtoupper($username);
+        $result = static::soapCommand("lookup player account {$username}");
+
+        if (!$result['success']) {
+            return false;
+        }
+
+        $raw = $result['message'];
+        $data = [
+            'account_id'  => 0,
+            'characters'  => [],
+            'raw'         => $raw,
+        ];
+
+        // Parse account ID from header line
+        if (preg_match('/\(Id:\s*(\d+)\)/i', $raw, $m)) {
+            $data['account_id'] = (int)$m[1];
+        }
+
+        // Race name mappings (EN → CN)
+        $raceMap = [
+            'Human' => '人类', 'Orc' => '兽人', 'Dwarf' => '矮人', 'Night Elf' => '暗夜精灵',
+            'Undead' => '亡灵', 'Tauren' => '牛头人', 'Gnome' => '侏儒', 'Troll' => '巨魔',
+            'Blood Elf' => '血精灵', 'Draenei' => '德莱尼',
+        ];
+        // Class name mappings (EN → CN)
+        $classMap = [
+            'Warrior' => '战士', 'Paladin' => '圣骑士', 'Hunter' => '猎人', 'Rogue' => '潜行者',
+            'Priest' => '牧师', 'Death Knight' => '死亡骑士', 'Shaman' => '萨满祭司',
+            'Mage' => '法师', 'Warlock' => '术士', 'Druid' => '德鲁伊',
+        ];
+
+        // Parse each character line: "Name (GUID x) - Race - Class - Level"
+        $lines = explode("\n", $raw);
+        foreach ($lines as $line) {
+            // Match: CharName (GUID 2) - Tauren - Hunter - 80
+            if (preg_match('/^(.+?)\s*\(GUID\s*(\d+)\)\s*-\s*(.+?)\s*-\s*(.+?)\s*-\s*(\d+)/i', trim($line), $m)) {
+                $raceEn = trim($m[3]);
+                $classEn = trim($m[4]);
+                $data['characters'][] = [
+                    'name'     => trim($m[1]),
+                    'guid'     => (int)$m[2],
+                    'race'     => $raceMap[$raceEn] ?? $raceEn,
+                    'race_en'  => $raceEn,
+                    'class'    => $classMap[$classEn] ?? $classEn,
+                    'class_en' => $classEn,
+                    'level'    => (int)$m[5],
+                ];
+            }
+        }
+
+        return $data;
+    }
+
     // -----------------------------------------------------------------------
     //  Binding storage — JSON file (no database required)
     // -----------------------------------------------------------------------
