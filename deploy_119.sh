@@ -1,6 +1,6 @@
 #!/bin/bash
 # =====================================================================
-# WoWSimpleRegistration 部署脚本 — YOUR_SERVER_IP
+# WoWSimpleRegistration 部署脚本 — 通用生产环境
 # 分支: mobile-login (手机一键登录)
 # =====================================================================
 # 用法:
@@ -131,7 +131,7 @@ else
     cat > "${CONFIG_FILE}" << 'PHPEOF'
 <?php
 /**
- * WoWSimpleRegistration — YOUR_SERVER_IP 生产配置
+ * WoWSimpleRegistration — 生产环境配置
  *
  * 自动生成 by deploy_119.sh
  * 分支: mobile-login (手机一键登录)

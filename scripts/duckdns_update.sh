@@ -12,9 +12,9 @@
 #   SERVER_IP    — 你的服务器 IP（留空则自动检测公网 IP）
 # ============================================
 
-DUCK_DOMAIN="your-subdomain"         # DuckDNS 子域名（不含 .duckdns.org）
-DUCK_TOKEN="YOUR_DUCKDNS_TOKEN"
-SERVER_IP="YOUR_SERVER_IP"        # 你的服务器 IP
+DUCK_DOMAIN="your-subdomain"       # DuckDNS 子域名（不含 .duckdns.org）
+DUCK_TOKEN="your-duckdns-token"     # DuckDNS 提供的 token
+SERVER_IP=""                        # 你的服务器 IP（留空则自动检测公网 IP）
 
 # 如果未指定 IP，自动获取公网 IP
 if [ -z "$SERVER_IP" ]; then

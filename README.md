@@ -127,7 +127,7 @@ php -S 0.0.0.0:8080 -t .
 
 访问 `http://your-server-ip:8080/`
 
-#### 方式 B：一键部署到 YOUR_SERVER_IP
+#### 方式 B：一键部署脚本
 
 ```bash
 chmod +x deploy_119.sh
@@ -420,7 +420,7 @@ WoWSimpleRegistration/
 
 ## 部署到生产服务器
 
-### 快速部署（YOUR_SERVER_IP）
+### 快速部署
 
 ```bash
 # 1. 在服务器上执行
