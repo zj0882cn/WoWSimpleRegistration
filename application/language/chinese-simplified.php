@@ -47,6 +47,7 @@ return [
     'password_reset_failed'    => '密码重置失败：',
     'confirm_reset_password'   => '确认重置密码',
     'save_password_warning'    => '请妥善保存新密码！登录游戏时需要使用。',
+    'forgot_password'          => '忘记密码？',
 
     // Errors
     'username_exists'          => '用户名已存在，请重试。',

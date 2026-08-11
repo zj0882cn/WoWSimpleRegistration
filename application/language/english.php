@@ -47,6 +47,7 @@ return [
     'password_reset_failed'    => 'Password reset failed:',
     'confirm_reset_password'   => 'Confirm Password Reset',
     'save_password_warning'    => 'Please save your new password! You will need it to log in to the game.',
+    'forgot_password'          => 'Forgot Password?',
 
     // Errors
     'username_exists'          => 'Username already exists. Please try again.',

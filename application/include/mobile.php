@@ -252,11 +252,12 @@ class MobileAuth
                     // Remove the code
                     unset($codes[$key]);
                     static::saveCodes(array_values($codes));
-                    return ['success' => false, 'message' => 'max_attempts_exceeded'];
+                    return ['success' => false, 'message' => 'max_attempts_exceeded', 'remaining' => 0];
                 }
 
                 // Increment attempts
                 $codes[$key]['attempts']++;
+                $currentAttempts = $codes[$key]['attempts'];
                 static::saveCodes(array_values($codes));
 
                 if ($entry['code'] === $code) {
@@ -266,7 +267,12 @@ class MobileAuth
                     return ['success' => true, 'message' => 'verified'];
                 }
 
-                return ['success' => false, 'message' => 'wrong_code'];
+                $remaining = static::$maxAttempts - $currentAttempts;
+                return [
+                    'success'   => false,
+                    'message'   => 'wrong_code',
+                    'remaining' => max(0, $remaining),
+                ];
             }
         }
 

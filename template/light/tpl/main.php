@@ -326,6 +326,13 @@ $siteUrl          = get_config('baseurl') ?: '';
                                     <i class="fas fa-sign-in-alt"></i>
                                     <?= lang('login_btn') ?: '登录' ?>
                                 </button>
+                                <div class="text-center" style="margin-top: 10px;">
+                                    <a href="<?= get_config('baseurl') ?>/reset_password.php"
+                                       style="font-size: 13px; color: var(--brand-blue);">
+                                        <i class="fas fa-redo"></i>
+                                        <?= lang('forgot_password') ?: '忘记密码？' ?>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     <?php endif; ?>
