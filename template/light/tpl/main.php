@@ -347,7 +347,29 @@ $siteUrl          = get_config('baseurl') ?: '';
                         <p><strong><?= lang('realmlist') ?: 'Realmlist' ?>:</strong>
                             <code><?= htmlspecialchars(get_config('realmlist')) ?></code></p>
                         <p><strong><?= lang('game_version') ?: '游戏版本' ?>:</strong>
-                            <?= htmlspecialchars(get_config('game_version')) ?></p>
+                            <?= htmlspecialchars(get_config('game_version')) ?>
+                            <?php if (!empty(get_config('client_download_url'))): ?>
+                            &nbsp;&nbsp;<a href="<?= htmlspecialchars(get_config('client_download_url')) ?>" target="_blank"
+                               style="font-size: 13px; color: var(--brand-blue);">
+                                <i class="fas fa-download"></i>
+                                <?= lang('client_download') ?: '客户端下载' ?>
+                            </a>
+                            <?php endif; ?>
+                        </p>
+                        <?php if (!empty(get_config('client_download_baidu'))): ?>
+                        <p style="font-size: 13px; color: #888; margin-left: 20px;">
+                            <i class="fas fa-cloud-download-alt"></i>
+                            <?= lang('baidu_pan') ?: '百度网盘' ?>:
+                            <a href="<?= htmlspecialchars(get_config('client_download_baidu_url')) ?>" target="_blank"
+                               style="color: var(--brand-blue);">
+                                <?= lang('click_download') ?: '点击下载' ?>
+                            </a>
+                            <?php if (!empty(get_config('client_download_baidu_code'))): ?>
+                            &nbsp;(<?= lang('extract_code') ?: '提取码' ?>:
+                            <code><?= htmlspecialchars(get_config('client_download_baidu_code')) ?></code>)
+                            <?php endif; ?>
+                        </p>
+                        <?php endif; ?>
                         <?php if (!empty(get_config('patch_location'))): ?>
                         <p><strong><?= lang('patch') ?: '补丁' ?>:</strong>
                             <a href="<?= htmlspecialchars(get_config('patch_location')) ?>">Download</a></p>

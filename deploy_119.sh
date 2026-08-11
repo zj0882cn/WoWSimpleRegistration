@@ -153,6 +153,12 @@ $config['debug_mode'] = false;
 $config['realmlist'] = 'YOUR_SERVER_IP';
 $config['patch_location'] = '';
 $config['game_version'] = '3.3.5a (12340)';
+
+// --- Client Download ---
+$config['client_download_url'] = 'https://www.chromiecraft.com/fr/downloads/';
+$config['client_download_baidu'] = true;
+$config['client_download_baidu_url'] = 'https://pan.baidu.com/s/1xr-u8T3Qh909AUOxzij-tA';
+$config['client_download_baidu_code'] = 'd7ai';
 $config['expansion'] = '2';
 
 // --- Server Core Type ---

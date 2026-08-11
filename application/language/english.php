@@ -68,6 +68,10 @@ return [
     // How to connect
     'realmlist'                => 'Realmlist',
     'game_version'             => 'Game Version',
+    'client_download'          => 'Client Download',
+    'baidu_pan'                => 'Baidu Pan',
+    'click_download'           => 'Download',
+    'extract_code'             => 'Extract Code',
     'patch'                    => 'Patch Download',
     'howto_step1'              => 'Edit your realmlist.wtf file and set it to:',
     'howto_step2_mobile'       => 'Enter your phone number and verify to create a game account automatically.',

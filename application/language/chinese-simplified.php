@@ -68,6 +68,10 @@ return [
     // How to connect
     'realmlist'                => '服务器地址',
     'game_version'             => '游戏版本',
+    'client_download'          => '客户端下载',
+    'baidu_pan'                => '百度网盘',
+    'click_download'           => '点击下载',
+    'extract_code'             => '提取码',
     'patch'                    => '补丁下载',
     'howto_step1'              => '修改 realmlist.wtf 文件，将内容设为：',
     'howto_step2_mobile'       => '输入手机号获取验证码，登录后将自动创建游戏账号。',

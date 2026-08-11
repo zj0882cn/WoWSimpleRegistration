@@ -348,6 +348,10 @@ WoWSimpleRegistration/
 | `game_version` | `3.3.5a (12340)` | 游戏版本 |
 | `expansion` | `2` | 扩展包（0=经典, 1=TBC, 2=WLK, 3=Cata） |
 | `server_core` | `1` | 服务端类型（1=AzerothCore） |
+| `client_download_url` | ChromieCraft 下载页 | 客户端下载地址（显示在连接指南） |
+| `client_download_baidu` | `true` | 是否显示百度网盘下载 |
+| `client_download_baidu_url` | — | 百度网盘链接 |
+| `client_download_baidu_code` | — | 百度网盘提取码 |
 
 ### SOAP 配置
 
