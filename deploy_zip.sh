@@ -5,20 +5,21 @@
 # =====================================================================
 # 前提: 用户已完成以下操作:
 #   1. 从 Git 下载代码 zip
-#   2. 将旧目录改名（如 WoWSimpleRegistration → WoWSimpleRegistration_old）
-#   3. 解压新代码到部署目录
+#   2. 解压到部署目录
 #
-# 本脚本只负责:
-#   1. 从旧目录拷贝配置文件 (config.php + data/)
-#   2. 安装 Composer 依赖
-#   3. 设置权限
-#   4. 验证部署
+# 本脚本负责:
+#   1. 检查运行环境 (PHP + 扩展)
+#   2. 生成 config.php 配置文件
+#   3. 创建数据目录
+#   4. 安装 Composer 依赖
+#   5. 设置权限
+#   6. 验证部署
 #
 # 用法:
 #   chmod +x deploy_zip.sh
-#   ./deploy_zip.sh                      # 自动检测同级 _old 目录恢复配置
-#   ./deploy_zip.sh /path/to/old_dir     # 指定旧目录路径
-#   ./deploy_zip.sh --no-restore         # 全新部署，不恢复旧配置
+#   ./deploy_zip.sh
+#
+# 注意: 修改下方配置项后再运行！
 # =====================================================================
 
 set -e
@@ -33,7 +34,7 @@ SOAP_PORT="7878"
 SOAP_USER="admin"
 SOAP_PASS="YOUR_SOAP_PASSWORD"
 
-# 站点配置（仅全新部署时生成 config.php 用到）
+# 站点配置
 SITE_URL="http://YOUR_SERVER_IP:${WEB_PORT}"
 PAGE_TITLE="WoW Server"
 # =====================================================================
@@ -50,19 +51,10 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 step()  { echo -e "\n${BLUE}===== $1 =====${NC}"; }
 
-# 解析参数
-OLD_DIR=""
-NO_RESTORE=false
-if [ "$1" = "--no-restore" ]; then
-    NO_RESTORE=true
-elif [ -n "$1" ]; then
-    OLD_DIR="$1"
-fi
-
 # =====================================================================
 # 步骤 1: 检查环境
 # =====================================================================
-step "1/5 检查运行环境"
+step "1/6 检查运行环境"
 
 if ! command -v php &> /dev/null; then
     error "PHP 未安装！"
@@ -102,46 +94,27 @@ else
 fi
 
 # =====================================================================
-# 步骤 2: 恢复配置文件
+# 步骤 2: 生成配置文件
 # =====================================================================
-step "2/5 恢复配置文件"
+step "2/6 生成配置文件"
 
 cd "${DEPLOY_DIR}"
-
-# 自动检测旧目录（同级目录下以 _old 或 _backup 结尾的目录）
-if [ "${NO_RESTORE}" = "false" ] && [ -z "${OLD_DIR}" ]; then
-    for candidate in "${DEPLOY_DIR}_old" "${DEPLOY_DIR}_backup" \
-                     "$(dirname ${DEPLOY_DIR})/WoWSimpleRegistration_old" \
-                     "$(dirname ${DEPLOY_DIR})/WoWSimpleRegistration_backup"; do
-        if [ -d "${candidate}" ] && [ -f "${candidate}/application/config/config.php" ]; then
-            OLD_DIR="${candidate}"
-            break
-        fi
-    done
-fi
-
-if [ "${NO_RESTORE}" = "true" ]; then
-    info "跳过配置恢复（全新部署）"
-    OLD_DIR=""
-elif [ -z "${OLD_DIR}" ]; then
-    warn "未找到旧目录，将生成新配置"
-else
-    info "从旧目录恢复配置: ${OLD_DIR}"
-fi
-
-# --- 恢复 config.php ---
 mkdir -p application/config
-if [ -n "${OLD_DIR}" ] && [ -f "${OLD_DIR}/application/config/config.php" ]; then
-    cp "${OLD_DIR}/application/config/config.php" application/config/config.php
-    info "config.php 已恢复"
-else
-    warn "生成新 config.php（请修改 SOAP 密码等配置）"
-    cat > application/config/config.php << 'PHPEOF'
+
+cat > application/config/config.php << 'PHPEOF'
 <?php
+/**
+ * WoWSimpleRegistration — 生产环境配置
+ * 自动生成 by deploy_zip.sh
+ **/
+
+// --- Basic ---
 $config['baseurl'] = '__SITE_URL__';
 $config['page_title'] = '__PAGE_TITLE__';
 $config['language'] = 'chinese-simplified';
 $config['supported_langs'] = ['chinese-simplified' => '简体中文', 'english' => 'English'];
+
+// --- Server ---
 $config['debug_mode'] = false;
 $config['realmlist'] = 'YOUR_SERVER_IP';
 $config['game_version'] = '3.3.5a (12340)';
@@ -151,12 +124,16 @@ $config['client_download_baidu_url'] = 'https://pan.baidu.com/s/1xr-u8T3Qh909AUO
 $config['client_download_baidu_code'] = 'd7ai';
 $config['expansion'] = '2';
 $config['server_core'] = 1;
+
+// --- Feature Toggles ---
 $config['battlenet_support'] = false;
 $config['srp6_support'] = false;
 $config['disable_top_players'] = true;
 $config['disable_online_players'] = true;
 $config['disable_changepassword'] = true;
 $config['template'] = 'light';
+
+// --- SOAP ---
 $config['soap_for_register'] = true;
 $config['soap_host'] = '__SOAP_HOST__';
 $config['soap_port'] = '__SOAP_PORT__';
@@ -166,36 +143,58 @@ $config['soap_username'] = '__SOAP_USER__';
 $config['soap_password'] = '__SOAP_PASS__';
 $config['soap_ca_command'] = 'account create {USERNAME} {PASSWORD}';
 $config['soap_asa_command'] = 'account set addon {USERNAME} {EXPANSION}';
+
+// --- Mobile Auth ---
 $config['mobile_enabled'] = true;
 $config['sms_provider'] = 'demo';
 $config['numberauth_provider'] = 'demo';
+
+// --- Aliyun SMS (上线时配置) ---
+$config['sms_aliyun_access_key']    = '';
+$config['sms_aliyun_access_secret'] = '';
+$config['sms_aliyun_sign_name']     = '';
+$config['sms_aliyun_template_code'] = '';
+
+// --- Tencent SMS (上线时配置) ---
+$config['sms_tencent_secret_id']   = '';
+$config['sms_tencent_secret_key']  = '';
+$config['sms_tencent_sign_name']   = '';
+$config['sms_tencent_template_id'] = '';
+$config['sms_tencent_sdk_appid']   = '';
+
+// --- One-Click Login ---
+$config['numberauth_aliyun_appkey'] = '';
+$config['numberauth_aliyun_access_key']    = '';
+$config['numberauth_aliyun_access_secret'] = '';
+
+// --- Other ---
 $config['captcha_type'] = 4;
 $config['script_version'] = '2.1.0';
 PHPEOF
-    sed -i "s|__SITE_URL__|${SITE_URL}|g" application/config/config.php
-    sed -i "s|__PAGE_TITLE__|${PAGE_TITLE}|g" application/config/config.php
-    sed -i "s|__SOAP_HOST__|${SOAP_HOST}|g" application/config/config.php
-    sed -i "s|__SOAP_PORT__|${SOAP_PORT}|g" application/config/config.php
-    sed -i "s|__SOAP_USER__|${SOAP_USER}|g" application/config/config.php
-    sed -i "s|__SOAP_PASS__|${SOAP_PASS}|g" application/config/config.php
-    info "config.php 已生成"
-fi
 
-# --- 恢复 data/ 目录 ---
+sed -i "s|__SITE_URL__|${SITE_URL}|g"       application/config/config.php
+sed -i "s|__PAGE_TITLE__|${PAGE_TITLE}|g"   application/config/config.php
+sed -i "s|__SOAP_HOST__|${SOAP_HOST}|g"     application/config/config.php
+sed -i "s|__SOAP_PORT__|${SOAP_PORT}|g"     application/config/config.php
+sed -i "s|__SOAP_USER__|${SOAP_USER}|g"     application/config/config.php
+sed -i "s|__SOAP_PASS__|${SOAP_PASS}|g"     application/config/config.php
+
+info "config.php 已生成"
+
+# =====================================================================
+# 步骤 3: 创建数据目录
+# =====================================================================
+step "3/6 创建数据目录"
+
 mkdir -p application/data
-if [ -n "${OLD_DIR}" ] && [ -d "${OLD_DIR}/application/data" ]; then
-    cp -r "${OLD_DIR}/application/data/"* application/data/ 2>/dev/null || true
-    info "data/ 目录已恢复"
-else
-    echo '[]' > application/data/mobile_bindings.json
-    echo '[]' > application/data/sms_codes.json
-    info "data/ 目录已创建（空）"
-fi
+echo '[]' > application/data/mobile_bindings.json
+echo '[]' > application/data/sms_codes.json
+info "data/ 目录已创建"
 
 # =====================================================================
-# 步骤 3: 安装 Composer 依赖
+# 步骤 4: 安装 Composer 依赖
 # =====================================================================
-step "3/5 安装 Composer 依赖"
+step "4/6 安装 Composer 依赖"
 
 cd "${DEPLOY_DIR}/application"
 
@@ -219,56 +218,45 @@ else
         COMPOSER_CMD="php composer.phar"
         info "Composer 下载成功"
     else
-        # 最后兜底: 从旧目录拷贝 vendor
-        if [ -n "${OLD_DIR}" ] && [ -d "${OLD_DIR}/application/vendor" ]; then
-            warn "Composer 下载失败，从旧目录拷贝 vendor ..."
-            cp -r "${OLD_DIR}/application/vendor" .
-            [ -f "vendor/autoload.php" ] && info "vendor 已从旧目录恢复" || { error "vendor 恢复失败"; exit 1; }
-        else
-            error "Composer 下载失败！请手动安装: curl -sS https://getcomposer.org/installer | php"
-            exit 1
-        fi
+        error "Composer 下载失败！请手动安装: curl -sS https://getcomposer.org/installer | php"
+        exit 1
     fi
 fi
 
 # --- 安装依赖 (4级回退) ---
-if [ -f "vendor/autoload.php" ] && [ -d "vendor/voku/anti-xss" ]; then
-    info "vendor 已存在，跳过安装"
-else
-    info "安装依赖..."
-    ${COMPOSER_CMD} config -g repo.packagist composer https://packagist.org 2>/dev/null || true
+info "安装依赖..."
+${COMPOSER_CMD} config -g repo.packagist composer https://packagist.org 2>/dev/null || true
 
-    INSTALL_OK=false
+INSTALL_OK=false
 
-    # 第1级: 标准安装
-    ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress 2>/dev/null && INSTALL_OK=true
+# 第1级: 标准安装
+${COMPOSER_CMD} install --no-dev --no-interaction --no-progress 2>/dev/null && INSTALL_OK=true
 
-    # 第2级: 忽略 ext-fileinfo
-    [ "${INSTALL_OK}" = "false" ] && {
-        warn "标准安装失败，忽略 ext-fileinfo 重试..."
-        ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-req=ext-fileinfo 2>/dev/null && INSTALL_OK=true
-    }
+# 第2级: 忽略 ext-fileinfo
+[ "${INSTALL_OK}" = "false" ] && {
+    warn "标准安装失败，忽略 ext-fileinfo 重试..."
+    ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-req=ext-fileinfo 2>/dev/null && INSTALL_OK=true
+}
 
-    # 第3级: 忽略所有平台要求
-    [ "${INSTALL_OK}" = "false" ] && {
-        warn "仍失败，忽略所有平台要求重试..."
-        ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-reqs 2>&1 && INSTALL_OK=true
-    }
+# 第3级: 忽略所有平台要求
+[ "${INSTALL_OK}" = "false" ] && {
+    warn "仍失败，忽略所有平台要求重试..."
+    ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-reqs 2>&1 && INSTALL_OK=true
+}
 
-    # 第4级: 删锁重试
-    [ "${INSTALL_OK}" = "false" ] && {
-        warn "锁文件可能过期，删除后重试..."
-        rm -f composer.lock
-        ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-reqs 2>&1 && INSTALL_OK=true
-    }
+# 第4级: 删锁重试
+[ "${INSTALL_OK}" = "false" ] && {
+    warn "锁文件可能过期，删除后重试..."
+    rm -f composer.lock
+    ${COMPOSER_CMD} install --no-dev --no-interaction --no-progress --ignore-platform-reqs 2>&1 && INSTALL_OK=true
+}
 
-    [ "${INSTALL_OK}" = "false" ] && {
-        error "Composer 依赖安装失败！"
-        echo "  手动安装: cd ${DEPLOY_DIR}/application && ${COMPOSER_CMD} install --no-dev --ignore-platform-reqs"
-        exit 1
-    }
-    info "Composer 依赖安装成功"
-fi
+[ "${INSTALL_OK}" = "false" ] && {
+    error "Composer 依赖安装失败！"
+    echo "  手动安装: cd ${DEPLOY_DIR}/application && ${COMPOSER_CMD} install --no-dev --ignore-platform-reqs"
+    exit 1
+}
+info "Composer 依赖安装成功"
 
 # 验证关键依赖
 [ -f "vendor/autoload.php" ] || { error "vendor/autoload.php 不存在"; exit 1; }
@@ -278,9 +266,9 @@ info "依赖验证通过"
 cd "${DEPLOY_DIR}"
 
 # =====================================================================
-# 步骤 4: 设置权限
+# 步骤 5: 设置权限
 # =====================================================================
-step "4/5 设置权限"
+step "5/6 设置权限"
 
 WEB_USER="www-data"
 id -u "nginx" &>/dev/null && WEB_USER="nginx"
@@ -293,9 +281,9 @@ chmod 644 "${DEPLOY_DIR}/application/config/config.php" 2>/dev/null || true
 info "权限设置完成 (web 用户: ${WEB_USER})"
 
 # =====================================================================
-# 步骤 5: 验证部署
+# 步骤 6: 验证部署
 # =====================================================================
-step "5/5 验证部署"
+step "6/6 验证部署"
 
 VERIFY_OK=true
 
@@ -349,7 +337,6 @@ echo -e "${GREEN}  环境搭建完成！${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "  部署目录: ${DEPLOY_DIR}"
-echo "  配置来源: $([ -n "${OLD_DIR}" ] && echo '从旧目录恢复' || echo '新生成')"
 echo "  启动命令: cd ${DEPLOY_DIR} && php -S 0.0.0.0:${WEB_PORT} -t ."
 echo ""
 
