@@ -490,10 +490,6 @@ $siteUrl          = get_config('baseurl') ?: '';
                             </div>
                         <?php endif; ?>
 
-                        <div class="soap-notice" style="margin-top: 15px;">
-                            <i class="fas fa-shield-alt"></i>
-                            <?= lang('security_notice') ?: '账号信息通过 SOAP 安全获取，请妥善保管你的账号密码。' ?>
-                        </div>
                     </div>
                 </div>
                 <?php endif; ?>
