@@ -967,6 +967,78 @@ class MobileAuth
         return static::saveBindings(array_values($bindings));
     }
 
+    /**
+     * Bind a phone number to an existing game account.
+     *
+     * Used when an account was created outside the web system (GM tool, DB direct, etc.)
+     * and the user needs to attach their phone number for one-click login support.
+     *
+     * @param string $username  Game account username (already verified via login)
+     * @param string $phone     Phone number to bind
+     * @param string $code      SMS verification code
+     * @return array ['success' => bool, 'message' => string]
+     */
+    public static function bindPhone($username, $phone, $code)
+    {
+        if (!static::init()) {
+            return ['success' => false, 'message' => 'mobile_auth_disabled'];
+        }
+
+        $username = strtoupper($username);
+
+        // Verify SMS code
+        $verifyResult = static::verifyCode($phone, $code);
+        if (!$verifyResult['success']) {
+            return ['success' => false, 'message' => $verifyResult['message']];
+        }
+
+        // Check if this phone is already bound to another account
+        $existingBinding = static::getBindingByPhone($phone);
+        if ($existingBinding && strtoupper($existingBinding['username']) !== $username) {
+            return ['success' => false, 'message' => 'phone_already_bound'];
+        }
+
+        // Verify account exists on game server
+        if (!static::accountExists($username)) {
+            return ['success' => false, 'message' => 'account_not_found'];
+        }
+
+        // Get existing binding for this username (may have empty phone)
+        $binding = static::getBindingByUsername($username);
+        $existingPasswordHash = '';
+        if ($binding) {
+            $existingPasswordHash = $binding['password_hash'] ?? '';
+        }
+
+        // Update or create binding with the phone
+        if ($binding) {
+            // Update existing binding — preserve password hash, update phone
+            $bindings = static::loadBindings();
+            foreach ($bindings as &$entry) {
+                if (strtoupper($entry['username']) === $username) {
+                    $entry['phone'] = $phone;
+                    $entry['bind_time'] = date('Y-m-d H:i:s');
+                    break;
+                }
+            }
+            unset($entry);
+            static::saveBindings(array_values($bindings));
+        } else {
+            // Create new binding with phone + empty password (user must set password via login first)
+            static::saveBinding($phone, $username, '');
+        }
+
+        // Update session
+        $_SESSION['mobile_phone'] = $phone;
+
+        return [
+            'success'  => true,
+            'message'  => 'phone_bound',
+            'username' => $username,
+            'phone'    => $phone,
+        ];
+    }
+
     // -----------------------------------------------------------------------
     //  High-level flow — login or register after SMS verification
     // -----------------------------------------------------------------------
@@ -1517,7 +1589,25 @@ class MobileAuth
                 $username = strtoupper($customUsername);
                 // Check if username is taken
                 if (static::accountExists($username)) {
-                    return ['success' => false, 'message' => 'username_taken'];
+                    // Account exists on server but phone not bound — bind phone to existing account
+                    // This handles the case of GM-created accounts where user provides phone + password
+                    $existingBinding = static::getBindingByUsername($username);
+                    if ($existingBinding && !empty($existingBinding['phone'])) {
+                        return ['success' => false, 'message' => 'username_taken'];
+                    }
+                    // Bind phone to existing account
+                    static::saveBinding($phone, $username, $password);
+                    $_SESSION['mobile_logged_in'] = true;
+                    $_SESSION['mobile_username']  = $username;
+                    $_SESSION['mobile_phone']     = $phone;
+
+                    return [
+                        'success'  => true,
+                        'username' => $username,
+                        'password' => $password,
+                        'message'  => 'login_success',
+                        'is_new'   => false,
+                    ];
                 }
             } else {
                 $username = static::generateUsername($phone);

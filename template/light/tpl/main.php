@@ -380,15 +380,49 @@ $siteUrl          = get_config('baseurl') ?: '';
                             </div>
                             <?php endif; ?>
 
-                            <div class="row" style="margin-bottom: 12px;">
+                            <div class="row" style="margin-bottom: 12px; align-items: center;">
                                 <div class="col-5">
                                     <span class="label"><i class="fas fa-phone"></i> <?= lang('bound_phone') ?: '绑定手机' ?></span>
                                 </div>
                                 <div class="col-7">
-                                    <span class="value" style="font-size: 14px;">
-                                        <?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'] ?? '')) ?>
-                                    </span>
+                                    <?php if (!empty($mbUser['phone'])): ?>
+                                        <span class="value" style="font-size: 14px;">
+                                            <?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'])) ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="value" style="font-size: 14px; color: #e6a23c;">
+                                            <i class="fas fa-exclamation-triangle"></i> 未绑定
+                                        </span>
+                                        <button type="button" id="bindPhoneBtn" class="btn btn-outline-primary btn-sm" style="margin-left: 10px; padding: 2px 12px; font-size: 12px;">
+                                            <i class="fas fa-link"></i> 绑定
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
+                            </div>
+
+                            <!-- Bind phone form (hidden by default) -->
+                            <div id="bindPhoneForm" style="display: none; margin-bottom: 12px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                                <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
+                                    <i class="fas fa-info-circle" style="color: var(--brand-blue);"></i>
+                                    绑定手机号后可使用一键登录，无需每次输入密码
+                                </div>
+                                <div class="input-group" style="margin-bottom: 8px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                    </div>
+                                    <input type="tel" id="bindPhoneInput" class="form-control" placeholder="请输入手机号" maxlength="11" pattern="1[3-9]\d{9}">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 8px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                    </div>
+                                    <input type="text" id="bindCodeInput" class="form-control" placeholder="验证码" maxlength="6">
+                                    <button type="button" id="bindSendCodeBtn" class="btn btn-outline-primary">获取验证码</button>
+                                </div>
+                                <button type="button" id="bindSubmitBtn" class="btn btn-primary btn-sm" style="width: 100%;">
+                                    <i class="fas fa-check"></i> 确认绑定
+                                </button>
+                                <div id="bindPhoneError" style="display: none; margin-top: 8px; font-size: 13px; color: #dc3545;"></div>
                             </div>
 
                             <div class="row" style="margin-bottom: 0;">
@@ -572,7 +606,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260812-fix4');
+console.log('[WoWSimpleRegistration] 版本: 20260812-fix5');
 console.log('[WoWSimpleRegistration] showError fix 已启用');
 
 // 自动滚动到登录区域（确保弹窗靠近输入区可见）
@@ -825,6 +859,118 @@ $(function() {
         if (e.which === 13) {
             $('#pwdLoginBtn').click();
         }
+    });
+
+    // --- Bind phone for accounts created outside the web system ---
+    var bindCodeCooldown = 0;
+
+    $('#bindPhoneBtn').on('click', function() {
+        $('#bindPhoneForm').slideToggle(200);
+    });
+
+    $('#bindSendCodeBtn').on('click', function() {
+        var phone = $('#bindPhoneInput').val().trim();
+        var errEl = $('#bindPhoneError');
+        errEl.hide();
+
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            errEl.text('请输入正确的手机号').show();
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('发送中...');
+
+        $.ajax({
+            url: siteUrl + '/sms_send.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { phone: phone },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    btn.prop('disabled', true);
+                    bindCodeCooldown = 60;
+                    var timer = setInterval(function() {
+                        btn.text(bindCodeCooldown + 's 后重试');
+                        bindCodeCooldown--;
+                        if (bindCodeCooldown < 0) {
+                            clearInterval(timer);
+                            btn.prop('disabled', false);
+                            btn.text('获取验证码');
+                        }
+                    }, 1000);
+
+                    // Demo mode: auto-fill code if provided
+                    if (resp.code && provider === 'demo') {
+                        $('#bindCodeInput').val(resp.code);
+                        console.log('[Bind Phone] Demo code:', resp.code);
+                    }
+                } else {
+                    btn.prop('disabled', false);
+                    btn.text('获取验证码');
+                    errEl.text(resp.message || '验证码发送失败').show();
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.text('获取验证码');
+                errEl.text('网络错误，请重试').show();
+            }
+        });
+    });
+
+    $('#bindSubmitBtn').on('click', function() {
+        var phone = $('#bindPhoneInput').val().trim();
+        var code = $('#bindCodeInput').val().trim();
+        var errEl = $('#bindPhoneError');
+        errEl.hide();
+
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            errEl.text('请输入正确的手机号').show();
+            return;
+        }
+        if (!code || code.length < 4) {
+            errEl.text('请输入验证码').show();
+            return;
+        }
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<span class="spinner"></span> 绑定中...');
+
+        $.ajax({
+            url: siteUrl + '/bind_phone.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { phone: phone, code: code },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    errEl.css('color', '#28a745').text('手机号绑定成功！').show();
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    btn.prop('disabled', false);
+                    btn.html('<i class="fas fa-check"></i> 确认绑定');
+                    var msgMap = {
+                        'wrong_code': '验证码错误',
+                        'code_not_found': '验证码不存在或已过期',
+                        'max_attempts_exceeded': '尝试次数过多，请重新获取验证码',
+                        'phone_already_bound': '该手机号已绑定其他账号',
+                        'account_not_found': '账号不存在',
+                        'not_logged_in': '请先登录'
+                    };
+                    var msg = msgMap[resp.message] || resp.message || '绑定失败';
+                    errEl.css('color', '#dc3545').text(msg).show();
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-check"></i> 确认绑定');
+                errEl.css('color', '#dc3545').text('网络错误，请重试').show();
+            }
+        });
     });
 });
 </script>
