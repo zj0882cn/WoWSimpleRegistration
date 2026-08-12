@@ -625,14 +625,16 @@ $(function() {
 
     // --- Redirect after successful login ---
     function handleLoginSuccess(resp) {
-        if (resp.success) {
+        console.log('Login response:', resp);
+        if (resp && resp.success) {
             if (resp.redirect) {
                 window.location.href = resp.redirect;
             } else {
                 window.location.reload();
             }
         } else {
-            showError(resp.message || '<?= lang("oneclick_failed") ?: "一键登录失败，请重试" ?>');
+            var errMsg = (resp && resp.message) ? resp.message : '<?= lang("oneclick_failed") ?: "一键登录失败，请重试" ?>';
+            showError(errMsg);
         }
     }
 
@@ -650,8 +652,9 @@ $(function() {
             dataType: 'json',
             data: data,
             success: handleLoginSuccess,
-            error: function() {
-                showError('网络错误，请重试');
+            error: function(xhr, status, err) {
+                console.error('AJAX error:', {status: status, error: err, responseText: xhr.responseText});
+                showError('网络错误: ' + (err || '未知错误'));
             }
         });
     }
@@ -664,8 +667,9 @@ $(function() {
             dataType: 'json',
             data: { username: username, password: password },
             success: handleLoginSuccess,
-            error: function() {
-                showError('网络错误，请重试');
+            error: function(xhr, status, err) {
+                console.error('AJAX error:', {status: status, error: err, responseText: xhr.responseText});
+                showError('网络错误: ' + (err || '未知错误'));
             }
         });
     }
