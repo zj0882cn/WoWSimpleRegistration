@@ -129,8 +129,8 @@ $siteUrl          = get_config('baseurl') ?: '';
             <!-- Navigation tabs -->
             <nav style="margin-top: 20px;">
                 <div class="nav nav-tabs nav-fill" id="nav-tab" role="tablist">
-                    <a class="nav-item nav-link active" id="nav-login-tab" data-toggle="tab"
-                       href="#nav-login" role="tab" aria-selected="true">
+                    <a class="nav-item nav-link<?= $mbLoggedIn ? '' : ' active' ?>" id="nav-login-tab" data-toggle="tab"
+                       href="#nav-login" role="tab" aria-selected="<?= $mbLoggedIn ? 'false' : 'true' ?>">
                         <i class="fas fa-sign-in-alt"></i>
                         <?php if ($mbLoggedIn): ?>
                             <?= lang('account_management') ?: '账号管理' ?>
@@ -139,8 +139,8 @@ $siteUrl          = get_config('baseurl') ?: '';
                         <?php endif; ?>
                     </a>
                     <?php if ($mbLoggedIn): ?>
-                    <a class="nav-item nav-link" id="nav-accountinfo-tab" data-toggle="tab"
-                       href="#nav-accountinfo" role="tab" aria-selected="false">
+                    <a class="nav-item nav-link active" id="nav-accountinfo-tab" data-toggle="tab"
+                       href="#nav-accountinfo" role="tab" aria-selected="true">
                         <i class="fas fa-user-circle"></i>
                         <?= lang('account_info_tab') ?: '账户' ?>
                     </a>
@@ -168,7 +168,7 @@ $siteUrl          = get_config('baseurl') ?: '';
             <div class="tab-content py-3 px-3 px-sm-0" id="nav-tabContent">
 
                 <!-- ===== Login / Account Tab ===== -->
-                <div class="tab-pane fade show active" id="nav-login" role="tabpanel"
+                <div class="tab-pane fade<?= $mbLoggedIn ? '' : ' show active' ?>" id="nav-login" role="tabpanel"
                      aria-labelledby="nav-login-tab">
 
                     <?php if ($mbLoggedIn && $mbUser): ?>
@@ -337,7 +337,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                 <?php if ($mbLoggedIn && $mbUser): ?>
                 <!-- ===== Account Info Tab ===== -->
-                <div class="tab-pane fade" id="nav-accountinfo" role="tabpanel"
+                <div class="tab-pane fade show active" id="nav-accountinfo" role="tabpanel"
                      aria-labelledby="nav-accountinfo-tab">
                     <div class="content_box1">
                         <h5><i class="fas fa-user-circle"></i> <?= lang('account_details') ?: '账户详情' ?></h5>
@@ -572,7 +572,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260812-fix2');
+console.log('[WoWSimpleRegistration] 版本: 20260812-fix3');
 console.log('[WoWSimpleRegistration] showError fix 已启用');
 
 // 自动滚动到登录区域（确保弹窗靠近输入区可见）
