@@ -11,8 +11,7 @@
 /**
  * Execute a SOAP command on the worldserver.
  *
- * Uses the SOAP Bridge (Python) for transport since PHP's native
- * network functions are sandboxed in this environment.
+ * Uses PHP's native SoapClient for direct connection.
  *
  * @param string $command
  * @return bool True on success, false on failure
@@ -23,15 +22,40 @@ function RemoteCommandWithSOAP($command)
         return false;
     }
 
-    require_once __DIR__ . '/soap_transport.php';
+    $host = get_config('soap_host');
+    $port = get_config('soap_port');
+    $uri  = get_config('soap_uri');
+    $user = get_config('soap_username');
+    $pass = get_config('soap_password');
 
-    $result = soap_send_command($command);
+    $location = "http://{$host}:{$port}/";
 
-    if (get_config('debug_mode')) {
-        error_log('[SOAP] Command: ' . $command . ' -> ' . ($result['success'] ? 'OK' : 'FAIL: ' . $result['message']));
+    try {
+        $client = new SoapClient($uri, [
+            'location' => $location,
+            'uri'      => $uri,
+            'style'    => SOAP_RPC,
+            'login'    => $user,
+            'password' => $pass,
+            'trace'    => true,
+            'cache_wsdl' => WSDL_CACHE_NONE,
+            'connection_timeout' => 10,
+        ]);
+
+        $safeCommand = htmlspecialchars($command, ENT_QUOTES, 'UTF-8');
+        $result = $client->executeCommand($safeCommand);
+
+        if (get_config('debug_mode')) {
+            error_log('[SOAP] Command: ' . $command . ' -> ' . ($result ? 'OK' : 'FAIL'));
+        }
+
+        return (bool)$result;
+    } catch (SoapFault $e) {
+        if (get_config('debug_mode')) {
+            error_log('[SOAP] Error: ' . $e->getMessage());
+        }
+        return false;
     }
-
-    return $result['success'];
 }
 
 /**
