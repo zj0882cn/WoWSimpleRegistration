@@ -37,18 +37,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <div class="row">
     <div class="main-box">
-        <img src="<?= $antiXss->xss_clean(get_config('baseurl')) ?>/template/<?= $antiXss->xss_clean(get_config('template')) ?>/images/wow-logo.png"
-             onerror="this.style.display='none'">
-
-        <div class="col-xs-12" style="margin-top: 20px;">
-            <!-- Status messages -->
-            <?php if (!empty($mobileLoginMsg)): ?>
-                <div class="alert-wechat">
-                    <i class="fas fa-check-circle"></i>
-                    <?= htmlspecialchars($mobileLoginMsg) ?>
-                </div>
-            <?php endif; ?>
-
+        <div class="col-xs-12">
             <!-- New account info (shown once after registration) -->
             <?php if ($newAccount && $mbLoggedIn && !empty($newPassword)): ?>
                 <div class="alert-wechat" style="border-color: var(--brand-blue);">
@@ -220,7 +209,22 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                     <?php else: ?>
                         <!-- ===== Not Logged In: One-Click Login ===== -->
-                        <div class="mobile-login-section">
+                        <div class="mobile-login-section login-area">
+
+                        <!-- Success modal displayed within login area -->
+                        <?php if (!empty($mobileLoginMsg)): ?>
+                            <div class="modal-overlay" id="loginSuccessModal">
+                                <div class="modal-content">
+                                    <div class="modal-icon success">
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                    <div class="modal-message"><?= htmlspecialchars($mobileLoginMsg) ?></div>
+                                    <button class="modal-close" onclick="document.getElementById('loginSuccessModal').style.display='none'">
+                                        好的
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endif; ?>
 
                         <?php if ($isMobile): ?>
                             <!-- ===== Mobile: One-Click Login ===== -->
@@ -295,20 +299,10 @@ $siteUrl          = get_config('baseurl') ?: '';
                         <?php endif; ?>
 
                             <!-- Error message display -->
-                            <div id="oneclickError" class="alert alert-danger" style="display: none; margin-top: 15px; font-size: 14px;">
-                            </div>
-
-                            <div class="soap-notice" style="margin-top: 20px;">
-                                <i class="fas fa-shield-alt"></i>
-                                <?= lang('security_notice') ?: '新用户注册需手机验证，老用户可使用账号密码登录。账号通过 SOAP 安全创建。' ?>
-                            </div>
+                            <div id="oneclickError" class="alert alert-danger" style="display: none; margin-top: 5px; font-size: 14px;"></div>
 
                             <!-- ===== Password Login (for returning users) ===== -->
-                            <hr style="margin: 30px 0; border-color: var(--border);">
-                            <h5 style="text-align: center; color: var(--text-muted);">
-                                <?= lang('password_login_title') ?: '已有账号？密码登录' ?>
-                            </h5>
-                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 15px auto;">
+                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 10px auto 0;">
                                 <div class="input-group" style="margin-bottom: 10px;">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text"><i class="fas fa-user"></i></span>
@@ -578,8 +572,20 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260812-fix1');
+console.log('[WoWSimpleRegistration] 版本: 20260812-fix2');
 console.log('[WoWSimpleRegistration] showError fix 已启用');
+
+// 自动滚动到登录区域（确保弹窗靠近输入区可见）
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('loginSuccessModal');
+    var loginArea = document.querySelector('.login-area');
+    if (modal && loginArea) {
+        // 平滑滚动到登录区域，让弹窗在输入区上方居中显示
+        setTimeout(function() {
+            loginArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    }
+});
 
 // 全局错误捕获，防止任何 JS 错误影响登录功能
 window.onerror = function(msg, url, line, col, error) {

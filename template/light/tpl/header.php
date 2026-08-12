@@ -38,11 +38,6 @@
             overflow: hidden;
             padding: 30px;
         }
-        .main-box img {
-            display: block;
-            margin: 0 auto 10px;
-            max-width: 200px;
-        }
         .nav-tabs .nav-link {
             color: #666;
             border: none;
@@ -216,6 +211,71 @@
             border-radius: 8px;
             padding: 10px 16px;
             text-align: center;
+        }
+
+        /* ===== Login area (modal positioning context) ===== */
+        .login-area {
+            position: relative;
+        }
+        /* ===== Modal Popup ===== */
+        .modal-overlay {
+            display: flex;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-content {
+            background: #fff;
+            border-radius: 16px;
+            padding: 32px 28px 24px;
+            width: 86%;
+            max-width: 320px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+        .modal-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        .modal-icon.success {
+            color: #28a745;
+        }
+        .modal-icon.error {
+            color: #dc3545;
+        }
+        .modal-message {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 24px;
+            font-weight: 500;
+        }
+        .modal-close {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: #fff;
+            border: none;
+            border-radius: 24px;
+            padding: 10px 40px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .modal-close:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         .input-group-text {
             background: #f8f9fa;
