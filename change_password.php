@@ -49,8 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirm_change'])) {
 
     if (empty($oldPass)) {
         $errorMsg = '请输入旧密码';
-    } elseif (strlen($newPass) < 6 || strlen($newPass) > 32) {
-        $errorMsg = '新密码需6-32位字符';
+    } elseif (strlen($newPass) < 6 || strlen($newPass) > 16) {
+        $errorMsg = '新密码需6-16位字符';
     } elseif ($newPass !== $confirmPass) {
         $errorMsg = '两次输入的新密码不一致';
     } elseif ($oldPass === $newPass) {

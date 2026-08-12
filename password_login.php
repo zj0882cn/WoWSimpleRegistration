@@ -53,12 +53,14 @@ if (!MobileAuth::accountExists(strtoupper($username))) {
 
 // Verify password against stored hash
 $pwVerify = MobileAuth::verifyPasswordHash($username, $password);
-if ($pwVerify['has_hash'] && !$pwVerify['verified']) {
+if (!$pwVerify['has_hash']) {
+    echo json_encode(['success' => false, 'message' => 'no_password_hash']);
+    exit;
+}
+if (!$pwVerify['verified']) {
     echo json_encode(['success' => false, 'message' => 'wrong_password']);
     exit;
 }
-// If no hash stored (legacy binding), skip verification — user can still log in
-// and the hash will be stored on next password change/reset
 
 // Set session — the user is now logged in on the website
 $_SESSION['mobile_logged_in'] = true;
@@ -66,12 +68,9 @@ $_SESSION['mobile_username']  = strtoupper($username);
 $_SESSION['mobile_phone']     = '';  // Password login doesn't have phone info
 
 // Try to find phone from existing bindings
-$allBindings = MobileAuth::loadBindings();
-foreach ($allBindings as $b) {
-    if (strtoupper($b['username']) === strtoupper($username)) {
-        $_SESSION['mobile_phone'] = $b['phone'];
-        break;
-    }
+$binding = MobileAuth::getBindingByUsername($username);
+if ($binding) {
+    $_SESSION['mobile_phone'] = $binding['phone'];
 }
 
 echo json_encode([
