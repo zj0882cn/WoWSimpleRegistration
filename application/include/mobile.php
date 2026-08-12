@@ -854,12 +854,16 @@ class MobileAuth
     {
         $bindings = static::loadBindings();
 
-        // Preserve existing password hash if no new password provided
+        // Preserve existing password hash and phone if no new password/phone provided
         $existingHash = '';
+        $existingPhone = $phone;
         foreach ($bindings as $entry) {
             if ($entry['phone'] === $phone ||
                 strtoupper($entry['username']) === strtoupper($username)) {
                 $existingHash = $entry['password_hash'] ?? '';
+                if (empty($phone) && !empty($entry['phone'])) {
+                    $existingPhone = $entry['phone'];
+                }
                 break;
             }
         }
@@ -870,9 +874,9 @@ class MobileAuth
                    strtoupper($entry['username']) !== strtoupper($username);
         });
 
-        // Build new binding entry
+        // Build new binding entry — preserve existing phone if new one is empty
         $newEntry = [
-            'phone'     => $phone,
+            'phone'     => $existingPhone ?: $phone,
             'username'  => strtoupper($username),
             'bind_time' => date('Y-m-d H:i:s'),
         ];

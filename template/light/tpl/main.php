@@ -572,7 +572,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260812-fix3');
+console.log('[WoWSimpleRegistration] 版本: 20260812-fix4');
 console.log('[WoWSimpleRegistration] showError fix 已启用');
 
 // 自动滚动到登录区域（确保弹窗靠近输入区可见）
@@ -635,6 +635,7 @@ $(function() {
             'password_required': '请输入密码',
             'username_required': '请输入游戏账号',
             'account_not_found': '账号不存在，请检查或先注册',
+            'no_password_hash': '该账号未设置密码，请先通过手机号一键登录',
             'wrong_password': '密码错误，请重新输入',
             'token_required': '认证令牌缺失，请重试',
             'numberauth_config_incomplete': '号码认证配置不完整，请联系管理员',

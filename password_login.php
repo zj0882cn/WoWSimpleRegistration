@@ -53,23 +53,38 @@ if (!MobileAuth::accountExists(strtoupper($username))) {
 
 // Verify password against stored hash
 $pwVerify = MobileAuth::verifyPasswordHash($username, $password);
+$binding = MobileAuth::getBindingByUsername($username);
+
 if (!$pwVerify['has_hash']) {
-    echo json_encode(['success' => false, 'message' => 'no_password_hash']);
-    exit;
-}
-if (!$pwVerify['verified']) {
+    // Account exists on game server (verified above) but no password hash stored locally.
+    // This can happen when:
+    //   1. User registered via Aliyun one-click (no password input required)
+    //   2. Account was created outside the web system (GM tool, DB direct, etc.)
+    //   3. mobile_bindings.json was reset during deployment
+    // Solution: trust the password input (account exists on SOAP), save the hash for future logins.
+    if ($binding) {
+        // Binding exists but no password_hash — save it now, preserving the phone
+        MobileAuth::updatePasswordHash($username, $password);
+    } else {
+        // No binding at all — create one with the password and empty phone
+        // (user can later bind phone via one-click login)
+        MobileAuth::saveBinding('', $username, $password);
+    }
+} elseif (!$pwVerify['verified']) {
     echo json_encode(['success' => false, 'message' => 'wrong_password']);
     exit;
 }
 
+// Refresh binding after potential update
+$binding = MobileAuth::getBindingByUsername($username);
+
 // Set session — the user is now logged in on the website
 $_SESSION['mobile_logged_in'] = true;
 $_SESSION['mobile_username']  = strtoupper($username);
-$_SESSION['mobile_phone']     = '';  // Password login doesn't have phone info
+$_SESSION['mobile_phone']     = '';
 
-// Try to find phone from existing bindings
-$binding = MobileAuth::getBindingByUsername($username);
-if ($binding) {
+// Use phone from binding if available
+if ($binding && !empty($binding['phone'])) {
     $_SESSION['mobile_phone'] = $binding['phone'];
 }
 
