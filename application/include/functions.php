@@ -11,8 +11,7 @@
 /**
  * Execute a SOAP command on the worldserver.
  *
- * Uses the SOAP Bridge (Python) for transport since PHP's native
- * network functions are sandboxed in this environment.
+ * Tries native SoapClient first, falls back to HTTP bridge if connection fails.
  *
  * @param string $command
  * @return bool True on success, false on failure
@@ -23,15 +22,96 @@ function RemoteCommandWithSOAP($command)
         return false;
     }
 
-    require_once __DIR__ . '/soap_transport.php';
-
-    $result = soap_send_command($command);
-
-    if (get_config('debug_mode')) {
-        error_log('[SOAP] Command: ' . $command . ' -> ' . ($result['success'] ? 'OK' : 'FAIL: ' . $result['message']));
+    // Try native SOAP first
+    $result = tryNativeSOAP($command);
+    if ($result !== null) {
+        return $result;
     }
 
-    return $result['success'];
+    // Fallback to HTTP bridge (for sandboxed environments)
+    return tryBridgeSOAP($command);
+}
+
+/**
+ * Try native SoapClient connection.
+ *
+ * @param string $command
+ * @return bool|null True/false on result, null if connection failed
+ */
+function tryNativeSOAP($command)
+{
+    try {
+        $conn = new SoapClient(null, [
+            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
+            'uri'      => get_config('soap_uri'),
+            'style'    => constant(get_config('soap_style')),
+            'login'    => get_config('soap_username'),
+            'password' => get_config('soap_password'),
+            'connection_timeout' => 5,
+        ]);
+
+        $result = $conn->executeCommand(new SoapParam($command, 'command'));
+        unset($conn);
+
+        if (get_config('debug_mode')) {
+            error_log('[SOAP Native] Command: ' . $command . ' -> ' . ($result ? 'OK' : 'FAIL'));
+        }
+
+        return (bool)$result;
+    } catch (SoapFault $e) {
+        // Connection failed - will try bridge
+        if (get_config('debug_mode')) {
+            error_log('[SOAP Native] Failed: ' . $e->getMessage() . ' (trying bridge)');
+        }
+        return null;
+    } catch (Exception $e) {
+        if (get_config('debug_mode')) {
+            error_log('[SOAP Native] Error: ' . $e->getMessage());
+        }
+        return false;
+    }
+}
+
+/**
+ * Fallback to HTTP bridge for SOAP commands.
+ *
+ * @param string $command
+ * @return bool True on success, false on failure
+ */
+function tryBridgeSOAP($command)
+{
+    $bridgeUrl = 'http://127.0.0.1:7999/';
+
+    $data = json_encode(['command' => $command]);
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $bridgeUrl);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode == 0 || !empty($error)) {
+        if (get_config('debug_mode')) {
+            error_log('[SOAP Bridge] Failed: ' . $error);
+        }
+        return false;
+    }
+
+    $result = json_decode($response, true);
+
+    if (get_config('debug_mode')) {
+        error_log('[SOAP Bridge] Command: ' . $command . ' -> ' . ($result['success'] ? 'OK' : 'FAIL: ' . ($result['message'] ?? 'unknown')));
+    }
+
+    return !empty($result['success']);
 }
 
 /**
