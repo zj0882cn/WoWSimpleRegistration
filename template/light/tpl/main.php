@@ -577,6 +577,10 @@ $siteUrl          = get_config('baseurl') ?: '';
 <?php endif; ?>
 
 <script>
+// 版本号 - 用于调试缓存问题
+console.log('[WoWSimpleRegistration] 版本: 20260812-fix1');
+console.log('[WoWSimpleRegistration] showError fix 已启用');
+
 // 全局错误捕获，防止任何 JS 错误影响登录功能
 window.onerror = function(msg, url, line, col, error) {
     console.error('Global JS Error:', msg, 'at line', line);
