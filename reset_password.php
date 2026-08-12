@@ -3,19 +3,15 @@
  * Forgot Password Page — SMS Verification Required
  *
  * Flow:
- *   Step 1: User enters phone number → send SMS code (AJAX)
+ *   - Logged in + phone bound → auto-use session phone, send code directly (no input)
+ *   - Logged in + no phone   → prompt to bind phone first, redirect to main page
+ *   - Not logged in          → user enters phone → check binding → send code
  *   Step 2: User enters SMS code → verify (server sets session token)
- *   Step 3: After verification, user sets new password → SOAP reset (checks session token)
+ *   Step 3: Set new password → SOAP reset (checks session token)
  *   Done:   Success page
  *
- * Security:
- *   - Step 3 requires a server-side session token set in Step 2
- *   - Verification token expires after 10 minutes
- *   - Rate limited SMS sending (60s interval)
- *   - Max 5 verification attempts per code
- *
  * @author AzerothCore Community
- **/
+ */
 
 session_start();
 require_once __DIR__ . '/application/config/config.php';
@@ -46,17 +42,33 @@ if (!get_config('mobile_enabled')) {
 /** Verification token TTL in seconds (10 minutes) */
 $resetTokenTTL = 600;
 
+// Determine login state
+$isLoggedIn  = MobileAuth::isLoggedIn();
+$sessionUser  = $_SESSION['mobile_username'] ?? '';
+$sessionPhone = $_SESSION['mobile_phone'] ?? '';
+
+// Pre-fill phone from session if available
+$phone     = $sessionPhone;
+$username  = $sessionUser;
+$errorMsg  = '';
+$demoCode  = '';
+$remaining = null;
+
+// Auto-send flag: whether phone was auto-filled from session (skip phone input UI)
+$autoPhone = $isLoggedIn && !empty($sessionPhone);
+
 // State: which step are we on?
-//   1 = enter phone (default)
+//   1 = send code (auto or manual phone input)
 //   2 = enter SMS code
 //   3 = set new password
 //   4 = done (success)
-$step      = intval($_POST['step'] ?? $_GET['step'] ?? 1);
-$errorMsg  = '';
-$demoCode  = ''; // demo mode shows the code
-$phone     = '';
-$username  = '';
-$remaining = null; // remaining verification attempts
+$step = intval($_POST['step'] ?? $_GET['step'] ?? 1);
+
+// If user is logged in but has no bound phone → force to bind first
+if ($isLoggedIn && empty($sessionPhone) && $step <= 2) {
+    $step     = 1;
+    $errorMsg = '您尚未绑定手机号，请先绑定后再重置密码';
+}
 
 // AJAX endpoint for sending SMS code
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
@@ -64,6 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
 
     if ($_POST['ajax_action'] === 'send_code') {
         $phone = trim($_POST['phone'] ?? '');
+
+        // For logged-in users, phone comes from session
+        if (empty($phone) && $isLoggedIn && !empty($sessionPhone)) {
+            $phone = $sessionPhone;
+        }
 
         if (!preg_match('/^1[3-9]\d{9}$/', $phone)) {
             echo json_encode(['success' => false, 'message' => '请输入正确的手机号']);
@@ -73,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
         // Check if this phone has a bound account
         $binding = MobileAuth::getBindingByPhone($phone);
         if (!$binding) {
-            echo json_encode(['success' => false, 'message' => '该手机号未注册游戏账号']);
+            echo json_encode(['success' => false, 'message' => '该手机号未绑定游戏账号，请先绑定']);
             exit;
         }
         if (!MobileAuth::accountExists($binding['username'])) {
@@ -111,16 +128,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // --- Step 1: Send SMS code (form fallback) ---
+    // --- Step 1: Send SMS code ---
     if ($step === 1 && !empty($_POST['send_code'])) {
-        $phone = trim($_POST['phone'] ?? '');
+        // Use auto-filled phone from session if available
+        if ($autoPhone) {
+            $phone = $sessionPhone;
+        } else {
+            $phone = trim($_POST['phone'] ?? '');
+        }
 
         if (!preg_match('/^1[3-9]\d{9}$/', $phone)) {
             $errorMsg = '请输入正确的手机号';
         } else {
             $binding = MobileAuth::getBindingByPhone($phone);
             if (!$binding) {
-                $errorMsg = '该手机号未注册游戏账号';
+                $errorMsg = '该手机号未绑定游戏账号，请先绑定';
             } elseif (!MobileAuth::accountExists($binding['username'])) {
                 $errorMsg = '绑定的游戏账号不存在，请联系管理员';
             } else {
@@ -146,7 +168,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // --- Step 2: Verify SMS code ---
     elseif ($step === 2 && !empty($_POST['verify_code'])) {
+        // Phone comes from POST or session
         $phone = trim($_POST['phone'] ?? '');
+        if (empty($phone) && $autoPhone) {
+            $phone = $sessionPhone;
+        }
         $code  = trim($_POST['code'] ?? '');
 
         if (empty($phone) || empty($code)) {
@@ -155,7 +181,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $verifyResult = MobileAuth::verifyCode($phone, $code);
             if ($verifyResult['success']) {
-                // Verification passed — set a session token for Step 3
                 $binding = MobileAuth::getBindingByPhone($phone);
                 $username = $binding['username'] ?? '';
 
@@ -198,7 +223,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $newPass     = trim($_POST['new_password'] ?? '');
         $confirmPass = trim($_POST['confirm_password'] ?? '');
 
-        // Security check: verify the session token from Step 2
         $sessionPhone  = $_SESSION['reset_verified_phone'] ?? '';
         $sessionToken  = $_SESSION['reset_verified_token'] ?? '';
         $sessionTime   = $_SESSION['reset_verified_time'] ?? 0;
@@ -210,7 +234,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         && !empty($sessionUser);
 
         if (!$tokenValid) {
-            // Token invalid or expired — go back to step 1
             $errorMsg = '验证已过期，请重新操作';
             $step = 1;
             unset(
@@ -231,9 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $result = MobileAuth::changePassword($username, $newPass);
                 if ($result['success']) {
-                    $step = 4; // Done
-
-                    // Clear the verification token
+                    $step = 4;
                     unset(
                         $_SESSION['reset_verified_phone'],
                         $_SESSION['reset_verified_token'],
@@ -256,17 +277,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Also guard: if user lands on step 3 via GET without a valid token, redirect
+// Guard: if user lands on step 3 via GET without a valid token, redirect
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $step === 3) {
     $sessionToken = $_SESSION['reset_verified_token'] ?? '';
     $sessionTime  = $_SESSION['reset_verified_time'] ?? 0;
     if (empty($sessionToken) || (time() - $sessionTime) > $resetTokenTTL) {
         $step = 1;
+        if ($autoPhone) {
+            $phone = $sessionPhone;
+        }
     } else {
         $phone    = $_SESSION['reset_verified_phone'] ?? '';
         $username = $_SESSION['reset_verified_user'] ?? '';
     }
 }
+
+// Guard: logged in without phone binding → show bind-first page
+$noPhoneBound = $isLoggedIn && empty($sessionPhone) && $step <= 2;
+
+// Compute masked phone for display
+$maskedPhone = $phone ? MobileAuth::maskPhone($phone) : '';
 
 $smsProvider = get_config('sms_provider') ?: 'demo';
 $siteUrl     = get_config('baseurl') ?: '';
@@ -440,6 +470,46 @@ $siteUrl     = get_config('baseurl') ?: '';
             border: 1px solid #fecaca;
             color: #dc2626;
         }
+        .info-box {
+            background: #f0f5ff;
+            border: 1px solid #adc6ff;
+            border-radius: 12px;
+            padding: 24px 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .info-box .phone-display {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--brand-blue);
+            letter-spacing: 2px;
+            margin: 10px 0;
+        }
+        .info-box .hint {
+            font-size: 13px;
+            color: #888;
+        }
+        .bind-prompt {
+            background: #fff7e6;
+            border: 1px solid #ffd591;
+            border-radius: 12px;
+            padding: 24px 20px;
+            text-align: center;
+        }
+        .bind-prompt .icon {
+            font-size: 48px;
+            color: var(--warning);
+            margin-bottom: 10px;
+        }
+        .bind-prompt h4 {
+            color: #d4880c;
+            margin-bottom: 10px;
+        }
+        .bind-prompt p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -449,58 +519,86 @@ $siteUrl     = get_config('baseurl') ?: '';
     </div>
     <div class="reset-body">
 
-        <?php if ($step < 4): ?>
-        <!-- Step indicator -->
-        <div class="step-indicator">
-            <div class="step-dot <?= $step >= 1 ? ($step > 1 ? 'done' : 'active') : '' ?>">1</div>
-            <div class="step-line <?= $step > 1 ? 'done' : '' ?>"></div>
-            <div class="step-dot <?= $step >= 2 ? ($step > 2 ? 'done' : 'active') : '' ?>">2</div>
-            <div class="step-line <?= $step > 2 ? 'done' : '' ?>"></div>
-            <div class="step-dot <?= $step >= 3 ? 'active' : '' ?>">3</div>
-        </div>
-        <?php endif; ?>
-
-        <?php if ($errorMsg): ?>
-            <div class="alert alert-danger" style="font-size: 14px;">
-                <i class="fas fa-exclamation-circle"></i>
-                <?= htmlspecialchars($errorMsg) ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($step === 1): ?>
-            <!-- ===== Step 1: Enter phone number ===== -->
-            <p style="text-align: center; color: #888; margin-bottom: 20px;">
-                输入注册时绑定的手机号，我们将发送验证码
-            </p>
-
-            <!-- AJAX status message -->
-            <div id="ajaxAlert" class="ajax-alert"></div>
-
-            <!-- Demo code display (AJAX response) -->
-            <div id="demoCodeBox" class="demo-code-box" style="display: none;">
-                <i class="fas fa-info-circle"></i> 演示模式验证码：<br>
-                <code id="demoCodeValue"></code>
-            </div>
-
-            <form method="POST" action="" id="step1Form">
-                <input type="hidden" name="step" value="1">
-                <input type="hidden" name="send_code" value="1">
-                <div class="form-group">
-                    <label><i class="fas fa-phone"></i> 手机号</label>
-                    <input type="tel" name="phone" id="phoneInput" class="form-control"
-                           placeholder="请输入手机号" maxlength="11"
-                           pattern="1[3-9]\d{9}" required
-                           value="<?= htmlspecialchars($phone) ?>">
+        <?php if ($noPhoneBound): ?>
+            <!-- ===== Logged in but no phone bound → prompt to bind ===== -->
+            <div class="bind-prompt">
+                <div class="icon">
+                    <i class="fas fa-mobile-alt"></i>
                 </div>
-                <button type="submit" id="sendCodeBtn" class="btn btn-brand btn-block">
-                    <i class="fas fa-paper-plane"></i> 发送验证码
-                </button>
-            </form>
+                <h4>尚未绑定手机号</h4>
+                <p>
+                    您的账号 <strong><?= htmlspecialchars($sessionUser) ?></strong> 尚未绑定手机号。<br>
+                    请先返回主页绑定手机后，再使用验证码重置密码。
+                </p>
+                <a href="<?= get_config('baseurl') ?>?tab=accountinfo" class="btn btn-brand">
+                    <i class="fas fa-link"></i> 去绑定手机
+                </a>
+            </div>
+
+        <?php elseif ($step === 1): ?>
+            <!-- ===== Step 1: Send code ===== -->
+
+            <?php if ($autoPhone): ?>
+                <!-- Auto mode: phone from session, show masked phone directly -->
+                <p style="text-align: center; color: #888; margin-bottom: 15px;">
+                    验证码将发送至您绑定的手机号
+                </p>
+                <div class="info-box">
+                    <div class="phone-display"><?= htmlspecialchars($maskedPhone) ?></div>
+                    <div class="hint">
+                        <i class="fas fa-shield-alt" style="color: var(--brand-blue);"></i>
+                        已验证账号：<strong><?= htmlspecialchars($username) ?></strong>
+                    </div>
+                </div>
+                <!-- AJAX status message -->
+                <div id="ajaxAlert" class="ajax-alert"></div>
+                <!-- Demo code display -->
+                <div id="demoCodeBox" class="demo-code-box" style="display: none;">
+                    <i class="fas fa-info-circle"></i> 演示模式验证码：<br>
+                    <code id="demoCodeValue"></code>
+                </div>
+                <form method="POST" action="" id="step1Form">
+                    <input type="hidden" name="step" value="1">
+                    <input type="hidden" name="send_code" value="1">
+                    <input type="hidden" name="phone" value="<?= htmlspecialchars($phone) ?>">
+                    <button type="submit" id="sendCodeBtn" class="btn btn-brand btn-block">
+                        <i class="fas fa-paper-plane"></i> 发送验证码
+                    </button>
+                </form>
+
+            <?php else: ?>
+                <!-- Manual mode: user enters phone number -->
+                <p style="text-align: center; color: #888; margin-bottom: 20px;">
+                    请输入账号绑定的手机号，我们将发送验证码
+                </p>
+                <!-- AJAX status message -->
+                <div id="ajaxAlert" class="ajax-alert"></div>
+                <!-- Demo code display -->
+                <div id="demoCodeBox" class="demo-code-box" style="display: none;">
+                    <i class="fas fa-info-circle"></i> 演示模式验证码：<br>
+                    <code id="demoCodeValue"></code>
+                </div>
+                <form method="POST" action="" id="step1Form">
+                    <input type="hidden" name="step" value="1">
+                    <input type="hidden" name="send_code" value="1">
+                    <div class="form-group">
+                        <label><i class="fas fa-phone"></i> 手机号</label>
+                        <input type="tel" name="phone" id="phoneInput" class="form-control"
+                               placeholder="请输入手机号" maxlength="11"
+                               pattern="1[3-9]\d{9}" required
+                               value="<?= htmlspecialchars($phone) ?>">
+                    </div>
+                    <button type="submit" id="sendCodeBtn" class="btn btn-brand btn-block">
+                        <i class="fas fa-paper-plane"></i> 发送验证码
+                    </button>
+                </form>
+            <?php endif; ?>
 
         <?php elseif ($step === 2): ?>
             <!-- ===== Step 2: Enter SMS code ===== -->
             <p style="text-align: center; color: #888; margin-bottom: 10px;">
-                验证码已发送至 <strong><?= htmlspecialchars($phone) ?></strong>
+                验证码已发送至
+                <strong><?= $autoPhone ? htmlspecialchars($maskedPhone) : htmlspecialchars($phone) ?></strong>
             </p>
 
             <?php if ($demoCode): ?>
@@ -528,7 +626,7 @@ $siteUrl     = get_config('baseurl') ?: '';
                 </button>
             </form>
 
-            <!-- Resend button with countdown (AJAX) -->
+            <!-- Resend button with countdown -->
             <div class="resend-timer" id="resendArea">
                 <button type="button" id="resendBtn" class="btn btn-link" style="font-size: 13px; color: #666; padding: 4px;">
                     没收到？重新发送
@@ -609,7 +707,7 @@ $siteUrl     = get_config('baseurl') ?: '';
             </div>
         <?php endif; ?>
 
-        <?php if ($step < 4): ?>
+        <?php if ($step < 4 && !$noPhoneBound): ?>
             <a href="<?= get_config('baseurl') ?>" class="btn btn-outline-secondary btn-block" style="margin-top: 10px;">
                 <i class="fas fa-times"></i> 取消
             </a>
@@ -624,6 +722,7 @@ $siteUrl     = get_config('baseurl') ?: '';
 
     var siteUrl = '<?= addslashes($siteUrl) ?>';
     var isDemo  = <?= ($smsProvider === 'demo') ? 'true' : 'false' ?>;
+    var autoPhone = <?= $autoPhone ? 'true' : 'false' ?>;
 
     // ===== Password show/hide toggle =====
     window.togglePassword = function(inputId, btn) {
@@ -681,14 +780,19 @@ $siteUrl     = get_config('baseurl') ?: '';
         step1Form.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            var phone = document.getElementById('phoneInput').value.trim();
-            var btn   = document.getElementById('sendCodeBtn');
-            var alert = document.getElementById('ajaxAlert');
-
-            if (!/^1[3-9]\d{9}$/.test(phone)) {
-                showAlert(alert, 'error', '请输入正确的手机号');
-                return;
+            var phone, btn, alert;
+            if (autoPhone) {
+                phone = document.querySelector('#step1Form input[name="phone"]').value;
+            } else {
+                phone = document.getElementById('phoneInput').value.trim();
+                if (!/^1[3-9]\d{9}$/.test(phone)) {
+                    showAlert(document.getElementById('ajaxAlert'), 'error', '请输入正确的手机号');
+                    return;
+                }
             }
+
+            btn = document.getElementById('sendCodeBtn');
+            alert = document.getElementById('ajaxAlert');
 
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 发送中...';
@@ -706,15 +810,12 @@ $siteUrl     = get_config('baseurl') ?: '';
                 if (data.success) {
                     showAlert(alert, 'success', '验证码已发送');
 
-                    // Show demo code if available
                     if (data.code) {
                         var box = document.getElementById('demoCodeBox');
                         document.getElementById('demoCodeValue').textContent = data.code;
                         box.style.display = 'block';
                     }
 
-                    // Transition to step 2 by submitting the form normally
-                    // (so the server sets up the step 2 page)
                     setTimeout(function() {
                         step1Form.submit();
                     }, 800);
@@ -725,7 +826,6 @@ $siteUrl     = get_config('baseurl') ?: '';
                 }
             })
             .catch(function() {
-                // Fallback: submit the form normally
                 step1Form.submit();
             });
         });
@@ -775,7 +875,6 @@ $siteUrl     = get_config('baseurl') ?: '';
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
                 if (data.success) {
-                    // Update demo code if shown
                     if (data.code) {
                         var existingBox = document.querySelector('.demo-code-box code');
                         if (existingBox) {
@@ -796,7 +895,7 @@ $siteUrl     = get_config('baseurl') ?: '';
             });
         });
 
-        // ===== Web OTP API: auto-receive SMS verification code =====
+        // Web OTP API: auto-receive SMS code
         if ('otpCredentials' in navigator) {
             navigator.credentials.get({
                 otp: { transport: ['sms'] }
@@ -804,24 +903,19 @@ $siteUrl     = get_config('baseurl') ?: '';
                 var codeInput = document.getElementById('codeInput');
                 if (otp && codeInput) {
                     codeInput.value = otp.code;
-                    // Auto-submit after filling
                     setTimeout(function() {
                         codeInput.form.submit();
                     }, 300);
                 }
-            }).catch(function() {
-                // User cancelled or not supported — silently ignore
-            });
+            }).catch(function() {});
         }
     }
 
-    // ===== Helper: show AJAX alert =====
     function showAlert(element, type, message) {
         if (!element) return;
         element.className = 'ajax-alert show ' + type;
         element.innerHTML = '<i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + '"></i> ' + message;
     }
-
 })();
 </script>
 </body>
