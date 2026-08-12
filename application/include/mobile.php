@@ -527,9 +527,33 @@ class MobileAuth
             return ['success' => false, 'message' => 'empty command'];
         }
 
-        require_once __DIR__ . '/soap_transport.php';
+        $soapOptions = [
+            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
+            'uri'      => get_config('soap_uri'),
+            'style'    => get_config('soap_style'),
+            'login'    => get_config('soap_username'),
+            'password' => get_config('soap_password'),
+            'connection_timeout' => 5,
+        ];
 
-        return soap_send_command($command);
+        try {
+            $conn = new SoapClient(NULL, $soapOptions);
+            $result = $conn->executeCommand(new SoapParam($command, 'command'));
+            unset($conn);
+
+            $message = is_string($result) ? trim($result) : '';
+
+            if (get_config('debug_mode')) {
+                error_log('[Mobile SOAP] Command: ' . $command . ' -> OK: ' . substr($message, 0, 200));
+            }
+
+            return ['success' => true, 'message' => $message];
+        } catch (Exception $e) {
+            if (get_config('debug_mode')) {
+                error_log('[Mobile SOAP] Error: ' . $command . ' -> ' . $e->getMessage());
+            }
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /**
