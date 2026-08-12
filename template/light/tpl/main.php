@@ -583,15 +583,20 @@ $(function() {
     var isMobile = <?= $isMobile ? 'true' : 'false' ?>;
 
     // --- PC: Generate QR Code ---
-    if (!isMobile && typeof QRCode !== 'undefined') {
-        new QRCode(document.getElementById('qrcode'), {
-            text: siteUrl,
-            width: 200,
-            height: 200,
-            colorDark: '#000000',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-        });
+    var qrcodeEl = document.getElementById('qrcode');
+    if (!isMobile && typeof QRCode !== 'undefined' && qrcodeEl) {
+        try {
+            new QRCode(qrcodeEl, {
+                text: siteUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        } catch (e) {
+            console.warn('QR code generation failed:', e);
+        }
     }
 
     // --- Error display helper ---
