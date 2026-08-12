@@ -1430,12 +1430,6 @@ class MobileAuth
             return ['success' => false, 'message' => 'invalid_phone'];
         }
 
-        // For new accounts, password is required and must be 6-16 chars (AzerothCore SOAP limit)
-        $password = trim($password);
-        if (strlen($password) < 6 || strlen($password) > 16) {
-            return ['success' => false, 'message' => 'invalid_password'];
-        }
-
         // Check if this phone is already bound
         $binding = static::getBindingByPhone($phone);
         if ($binding) {
@@ -1445,6 +1439,12 @@ class MobileAuth
                 $_SESSION['mobile_logged_in'] = true;
                 $_SESSION['mobile_username']  = $binding['username'];
                 $_SESSION['mobile_phone']     = $phone;
+
+                // Update password hash if a new password is provided
+                $password = trim($password);
+                if (!empty($password) && strlen($password) >= 6 && strlen($password) <= 16) {
+                    static::saveBinding($phone, $binding['username'], $password);
+                }
 
                 return [
                     'success'  => true,
@@ -1457,6 +1457,12 @@ class MobileAuth
 
             // Account was deleted — re-create with the same username
             $username = $binding['username'];
+        }
+
+        // For new accounts, password is required and must be 6-16 chars (AzerothCore SOAP limit)
+        $password = trim($password);
+        if (strlen($password) < 6 || strlen($password) > 16) {
+            return ['success' => false, 'message' => 'invalid_password'];
         }
 
         // Use user-supplied username or auto-generate

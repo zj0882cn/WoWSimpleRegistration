@@ -103,6 +103,14 @@ if (empty($command)) {
         }
         $resultMessage = implode("\n", $lines);
     }
+} elseif (preg_match('/^account\s+exists\s+(\S+)$/i', $command, $m)) {
+    // account exists {username}
+    $user = strtoupper($m[1]);
+    if (isset($accounts[$user])) {
+        $resultMessage = "Account exists: {$m[1]}";
+    } else {
+        $resultMessage = "Account not exist: {$m[1]}";
+    }
 } elseif (preg_match('/^server\s+info$/i', $command)) {
     $resultMessage = "Mock AzerothCore Server | Accounts: " . count($accounts) . " | Uptime: test mode";
 } elseif (preg_match('/^help$/i', $command)) {
