@@ -527,46 +527,65 @@ class MobileAuth
             return ['success' => false, 'message' => 'empty command'];
         }
 
-        // Convert style string to constant value if needed
-        $style = get_config('soap_style');
-        if (is_string($style)) {
-            $styleConstant = strtoupper($style);
-            if (defined($styleConstant)) {
-                $style = constant($styleConstant);
-            } else {
-                $style = SOAP_RPC; // default
+        $soapUrl = 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/';
+        $soapUri = get_config('soap_uri');
+        $soapUser = get_config('soap_username');
+        $soapPass = get_config('soap_password');
+
+        $soapRequest = '<?xml version="1.0" encoding="UTF-8"?>' . "\n" .
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' . $soapUri . '">' . "\n" .
+            '  <soapenv:Header/>' . "\n" .
+            '  <soapenv:Body>' . "\n" .
+            '    <urn:executeCommand>' . "\n" .
+            '      <command>' . htmlspecialchars($command, ENT_XML1, 'UTF-8') . '</command>' . "\n" .
+            '    </urn:executeCommand>' . "\n" .
+            '  </soapenv:Body>' . "\n" .
+            '</soapenv:Envelope>';
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $soapUrl,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $soapRequest,
+            CURLOPT_HTTPHEADER     => ['Content-Type: text/xml; charset=utf-8'],
+            CURLOPT_USERPWD        => $soapUser . ':' . $soapPass,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 5,
+            CURLOPT_CONNECTTIMEOUT => 3,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            if (get_config('debug_mode')) {
+                error_log('[Mobile SOAP] cURL Error: ' . $command . ' -> ' . $curlError);
             }
+            return ['success' => false, 'message' => 'curl_error: ' . $curlError];
         }
 
-        $soapOptions = [
-            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
-            'uri'      => get_config('soap_uri'),
-            'style'    => $style,
-            'login'    => get_config('soap_username'),
-            'password' => get_config('soap_password'),
-            'connection_timeout' => 5,
-            'trace'    => true,
-            'exceptions' => true,
-        ];
-
-        try {
-            $conn = new SoapClient(NULL, $soapOptions);
-            $result = $conn->executeCommand(new SoapParam($command, 'command'));
-            unset($conn);
-
-            $message = is_string($result) ? trim($result) : '';
-
+        if ($httpCode !== 200) {
             if (get_config('debug_mode')) {
-                error_log('[Mobile SOAP] Command: ' . $command . ' -> OK: ' . substr($message, 0, 200));
+                error_log('[Mobile SOAP] HTTP Error: ' . $command . ' -> HTTP ' . $httpCode);
             }
-
-            return ['success' => true, 'message' => $message];
-        } catch (Exception $e) {
-            if (get_config('debug_mode')) {
-                error_log('[Mobile SOAP] Error: ' . $command . ' -> ' . $e->getMessage());
-            }
-            return ['success' => false, 'message' => $e->getMessage()];
+            return ['success' => false, 'message' => 'http_error: ' . $httpCode];
         }
+
+        // Parse SOAP response
+        $message = '';
+        if (preg_match('/<result[^>]*>(.*?)<\/result>/s', $response, $m)) {
+            $message = html_entity_decode(trim($m[1]), ENT_XML1, 'UTF-8');
+        } else {
+            $message = trim($response);
+        }
+
+        if (get_config('debug_mode')) {
+            error_log('[Mobile SOAP] Command: ' . $command . ' -> OK: ' . substr($message, 0, 200));
+        }
+
+        return ['success' => true, 'message' => $message];
     }
 
     /**
