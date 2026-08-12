@@ -42,12 +42,25 @@ class MobileAuth
      */
     public static function init()
     {
+        if (static::$dataFile !== null) {
+            return true;
+        }
         if (!get_config('mobile_enabled')) {
             return false;
         }
         static::$dataFile = __DIR__ . '/../data/mobile_bindings.json';
         static::$codeFile = __DIR__ . '/../data/sms_codes.json';
         return true;
+    }
+
+    /**
+     * Ensure lazy initialization.
+     */
+    private static function ensureInit()
+    {
+        if (static::$dataFile === null) {
+            static::init();
+        }
     }
 
     /**
@@ -117,7 +130,8 @@ class MobileAuth
      */
     private static function loadCodes()
     {
-        if (!file_exists(static::$codeFile)) {
+        static::ensureInit();
+        if (static::$codeFile === null || !file_exists(static::$codeFile)) {
             return [];
         }
         $content = file_get_contents(static::$codeFile);
@@ -133,6 +147,10 @@ class MobileAuth
      */
     private static function saveCodes($codes)
     {
+        static::ensureInit();
+        if (static::$codeFile === null) {
+            return false;
+        }
         $dir = dirname(static::$codeFile);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
@@ -497,6 +515,9 @@ class MobileAuth
     /**
      * Execute a SOAP command on the worldserver and return the response text.
      *
+     * Uses the SOAP Bridge (Python) for transport since PHP's native
+     * network functions are sandboxed in this environment.
+     *
      * @param string $command
      * @return array ['success' => bool, 'message' => string]
      */
@@ -506,38 +527,9 @@ class MobileAuth
             return ['success' => false, 'message' => 'empty command'];
         }
 
-        $soapOptions = [
-            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
-            'uri'      => get_config('soap_uri'),
-            'style'    => get_config('soap_style'),
-            'login'    => get_config('soap_username'),
-            'password' => get_config('soap_password'),
-        ];
+        require_once __DIR__ . '/soap_transport.php';
 
-        // Auto-detect proxy from environment (needed in sandbox/development)
-        $proxy = getenv('http_proxy') ?: getenv('HTTP_PROXY');
-        if (!empty($proxy) && stripos($proxy, '127.0.0.1') !== false) {
-            $proxyParts = parse_url($proxy);
-            if (!empty($proxyParts['host']) && !empty($proxyParts['port'])) {
-                $soapOptions['proxy_host'] = $proxyParts['host'];
-                $soapOptions['proxy_port'] = $proxyParts['port'];
-            }
-        }
-
-        try {
-            $conn = new SoapClient(NULL, $soapOptions);
-
-            $result = $conn->executeCommand(new SoapParam($command, 'command'));
-            unset($conn);
-
-            $message = is_string($result) ? trim($result) : '';
-            return ['success' => true, 'message' => $message];
-        } catch (Exception $e) {
-            if (get_config('debug_mode')) {
-                error_log('[MobileAuth SOAP] Error: ' . $e->getMessage());
-            }
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
+        return soap_send_command($command);
     }
 
     /**
@@ -746,7 +738,8 @@ class MobileAuth
      */
     private static function loadBindings()
     {
-        if (!file_exists(static::$dataFile)) {
+        static::ensureInit();
+        if (static::$dataFile === null || !file_exists(static::$dataFile)) {
             return [];
         }
         $content = file_get_contents(static::$dataFile);
@@ -762,6 +755,10 @@ class MobileAuth
      */
     private static function saveBindings($bindings)
     {
+        static::ensureInit();
+        if (static::$dataFile === null) {
+            return false;
+        }
         $dir = dirname(static::$dataFile);
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
@@ -1161,7 +1158,7 @@ class MobileAuth
         $username = strtoupper($username);
         $newPassword = trim($newPassword);
 
-        if (strlen($newPassword) < 6 || strlen($newPassword) > 32) {
+        if (strlen($newPassword) < 6 || strlen($newPassword) > 16) {
             return ['success' => false, 'message' => 'invalid_password'];
         }
 
@@ -1433,9 +1430,9 @@ class MobileAuth
             return ['success' => false, 'message' => 'invalid_phone'];
         }
 
-        // For new accounts, password is required and must be 6-32 chars
+        // For new accounts, password is required and must be 6-16 chars (AzerothCore SOAP limit)
         $password = trim($password);
-        if (strlen($password) < 6 || strlen($password) > 32) {
+        if (strlen($password) < 6 || strlen($password) > 16) {
             return ['success' => false, 'message' => 'invalid_password'];
         }
 
@@ -1467,7 +1464,7 @@ class MobileAuth
             $customUsername = trim($customUsername);
             if (!empty($customUsername)) {
                 // Validate custom username: 3-16 chars, alphanumeric
-                if (!preg_match('/^[A-Za-z0-9]{3,16}$/', $customUsername)) {
+                if (!preg_match('/^[A-Za-z0-9_]{3,16}$/', $customUsername)) {
                     return ['success' => false, 'message' => 'invalid_username'];
                 }
                 $username = strtoupper($customUsername);

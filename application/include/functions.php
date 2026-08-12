@@ -11,6 +11,9 @@
 /**
  * Execute a SOAP command on the worldserver.
  *
+ * Uses the SOAP Bridge (Python) for transport since PHP's native
+ * network functions are sandboxed in this environment.
+ *
  * @param string $command
  * @return bool True on success, false on failure
  */
@@ -20,24 +23,15 @@ function RemoteCommandWithSOAP($command)
         return false;
     }
 
-    try {
-        $conn = new SoapClient(null, [
-            'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
-            'uri'      => get_config('soap_uri'),
-            'style'    => constant(get_config('soap_style')),
-            'login'    => get_config('soap_username'),
-            'password' => get_config('soap_password'),
-        ]);
+    require_once __DIR__ . '/soap_transport.php';
 
-        $result = $conn->executeCommand(new SoapParam($command, 'command'));
-        unset($conn);
-        return true;
-    } catch (Exception $e) {
-        if (get_config('debug_mode')) {
-            error_log('[SOAP] Error: ' . $e->getMessage());
-        }
-        return false;
+    $result = soap_send_command($command);
+
+    if (get_config('debug_mode')) {
+        error_log('[SOAP] Command: ' . $command . ' -> ' . ($result['success'] ? 'OK' : 'FAIL: ' . $result['message']));
     }
+
+    return $result['success'];
 }
 
 /**
