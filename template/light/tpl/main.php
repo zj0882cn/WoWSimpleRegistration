@@ -577,6 +577,12 @@ $siteUrl          = get_config('baseurl') ?: '';
 <?php endif; ?>
 
 <script>
+// 全局错误捕获，防止任何 JS 错误影响登录功能
+window.onerror = function(msg, url, line, col, error) {
+    console.error('Global JS Error:', msg, 'at line', line);
+    return true; // 阻止默认错误处理
+};
+
 $(function() {
     var siteUrl = window.location.origin;
     var provider = '<?= addslashes($oneclickProvider) ?>';
