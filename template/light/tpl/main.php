@@ -639,6 +639,7 @@ $(function() {
     function handleLoginSuccess(resp) {
         console.log('Login response:', resp);
         if (resp && resp.success) {
+            showError(''); // 清除任何可能残留的错误
             if (resp.redirect) {
                 window.location.href = resp.redirect;
             } else {
