@@ -527,13 +527,26 @@ class MobileAuth
             return ['success' => false, 'message' => 'empty command'];
         }
 
+        // Convert style string to constant value if needed
+        $style = get_config('soap_style');
+        if (is_string($style)) {
+            $styleConstant = strtoupper($style);
+            if (defined($styleConstant)) {
+                $style = constant($styleConstant);
+            } else {
+                $style = SOAP_RPC; // default
+            }
+        }
+
         $soapOptions = [
             'location' => 'http://' . get_config('soap_host') . ':' . get_config('soap_port') . '/',
             'uri'      => get_config('soap_uri'),
-            'style'    => get_config('soap_style'),
+            'style'    => $style,
             'login'    => get_config('soap_username'),
             'password' => get_config('soap_password'),
             'connection_timeout' => 5,
+            'trace'    => true,
+            'exceptions' => true,
         ];
 
         try {
