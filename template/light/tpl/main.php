@@ -608,6 +608,11 @@ $(function() {
     // --- Error display helper ---
     function showError(msg) {
         var el = $('#oneclickError');
+        // 如果 msg 为空、null 或 undefined，隐藏错误
+        if (!msg) {
+            el.hide();
+            return;
+        }
         var friendlyMsgs = {
             'soap_create_failed': '游戏服务器连接失败，请稍后重试',
             'soap_error': '游戏服务器连接失败，请稍后重试',
@@ -626,12 +631,8 @@ $(function() {
             'numberauth_request_failed': '号码认证请求失败，请重试',
             'numberauth_failed': '号码认证失败，请重试'
         };
-        var displayMsg = friendlyMsgs[msg] || msg || '操作失败，请重试';
-        if (displayMsg) {
-            el.html('<i class="fas fa-exclamation-circle"></i> ' + displayMsg).show();
-        } else {
-            el.hide();
-        }
+        var displayMsg = friendlyMsgs[msg] || msg;
+        el.html('<i class="fas fa-exclamation-circle"></i> ' + displayMsg).show();
     }
 
     // --- Redirect after successful login ---
