@@ -28,6 +28,7 @@ tests/sms_codes.json
 cleanup_test_data.php
 check_production.sh
 diagnose.php
+soap_bridge.py
 
 # ---- Test guide build output (keep HTML, ignore build cache) ----
 tests/test-guide/_shared/
