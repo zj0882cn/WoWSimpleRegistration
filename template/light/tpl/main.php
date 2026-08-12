@@ -189,7 +189,8 @@ $siteUrl          = get_config('baseurl') ?: '';
                                     <i class="fas fa-key"></i>
                                     修改密码
                                 </a>
-                                <a href="<?= get_config('baseurl') ?>/reset_password.php"
+                                <a href="javascript:void(0)"
+                                   onclick="openResetPasswordModal()"
                                    class="btn btn-warning" style="padding: 10px 24px;">
                                     <i class="fas fa-redo"></i>
                                     忘记密码
@@ -324,7 +325,8 @@ $siteUrl          = get_config('baseurl') ?: '';
                                     <?= lang('login_btn') ?: '登录' ?>
                                 </button>
                                 <div class="text-center" style="margin-top: 10px;">
-                                    <a href="<?= get_config('baseurl') ?>/reset_password.php"
+                                    <a href="javascript:void(0)"
+                                       onclick="openResetPasswordModal()"
                                        style="font-size: 13px; color: var(--brand-blue);">
                                         <i class="fas fa-redo"></i>
                                         <?= lang('forgot_password') ?: '忘记密码？' ?>
@@ -602,7 +604,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260812-fix5');
+console.log('[WoWSimpleRegistration] 版本: 20260813-reset-modal');
 console.log('[WoWSimpleRegistration] showError fix 已启用');
 
 // 自动滚动到登录区域（确保弹窗靠近输入区可见）
@@ -968,7 +970,427 @@ $(function() {
             }
         });
     });
+
+    // ===== Password Reset Modal =====
+    var resetState = {
+        phone: '',
+        username: '',
+        demoCode: '',
+        countdownTimer: null,
+        countdownValue: 0
+    };
+
+    window.openResetPasswordModal = function() {
+        var modal = document.getElementById('resetPasswordModal');
+        if (!modal) return;
+
+        resetState = { phone: '', username: '', demoCode: '', countdownTimer: null, countdownValue: 0 };
+        document.getElementById('resetModalMsg').style.display = 'none';
+
+        var isLoggedIn = <?= $mbLoggedIn ? 'true' : 'false' ?>;
+        var sessionPhone = '<?= addslashes($_SESSION['mobile_phone'] ?? '') ?>';
+        var autoMode = isLoggedIn && sessionPhone;
+
+        if (autoMode) {
+            resetState.phone = sessionPhone;
+            document.getElementById('resetAutoPhoneBox').style.display = 'block';
+            document.getElementById('resetManualBox').style.display = 'none';
+
+            $.ajax({
+                url: siteUrl + '/reset_password.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { ajax_action: 'send_code', phone: sessionPhone },
+                success: function(resp) {
+                    if (resp && resp.success) {
+                        document.getElementById('resetMaskedPhone').textContent = resp.masked_phone || sessionPhone;
+                        document.getElementById('resetAccountName').textContent = resp.username || '';
+                        resetState.username = resp.username || '';
+                    } else {
+                        document.getElementById('resetMaskedPhone').textContent = maskPhoneClient(sessionPhone);
+                    }
+                },
+                error: function() {
+                    document.getElementById('resetMaskedPhone').textContent = maskPhoneClient(sessionPhone);
+                }
+            });
+        } else {
+            document.getElementById('resetAutoPhoneBox').style.display = 'none';
+            document.getElementById('resetManualBox').style.display = 'block';
+        }
+
+        showResetStep(1);
+        modal.style.display = 'flex';
+    };
+
+    window.closeResetPasswordModal = function() {
+        var modal = document.getElementById('resetPasswordModal');
+        if (modal) modal.style.display = 'none';
+        if (resetState.countdownTimer) {
+            clearInterval(resetState.countdownTimer);
+            resetState.countdownTimer = null;
+        }
+    };
+
+    function maskPhoneClient(phone) {
+        if (!phone || phone.length < 11) return phone;
+        return phone.substr(0, 3) + '****' + phone.substr(7);
+    }
+
+    function showResetStep(step) {
+        ['resetStep1', 'resetStep2', 'resetStep3', 'resetStep4'].forEach(function(id) {
+            document.getElementById(id).style.display = 'none';
+        });
+        var target = document.getElementById('resetStep' + step);
+        if (target) target.style.display = 'block';
+        document.getElementById('resetModalMsg').style.display = 'none';
+        if (step === 3) {
+            document.getElementById('resetAccountDisplay').textContent = resetState.username || '';
+        }
+    }
+
+    function showResetMsg(type, msg) {
+        var el = document.getElementById('resetModalMsg');
+        el.style.display = 'block';
+        if (type === 'error') {
+            el.style.background = '#fef2f2';
+            el.style.border = '1px solid #fecaca';
+            el.style.color = '#dc2626';
+            el.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + msg;
+        } else {
+            el.style.background = '#f0fdf4';
+            el.style.border = '1px solid #bbf7d0';
+            el.style.color = '#15803d';
+            el.innerHTML = '<i class="fas fa-check-circle"></i> ' + msg;
+        }
+    }
+
+    $('#resetSendCodeBtn').on('click', function() {
+        var btn = $(this);
+        var phone = resetState.phone;
+        if (!phone) phone = $('#resetPhoneInput').val().trim();
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            showResetMsg('error', '请输入正确的手机号');
+            return;
+        }
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> 发送中...');
+        $.ajax({
+            url: siteUrl + '/reset_password.php',
+            type: 'POST', dataType: 'json',
+            data: { ajax_action: 'send_code', phone: phone },
+            success: function(resp) {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-paper-plane"></i> 发送验证码');
+                if (resp && resp.success) {
+                    resetState.phone = resp.phone || phone;
+                    resetState.username = resp.username || resetState.username;
+                    resetState.demoCode = resp.code || '';
+                    if (resetState.demoCode) {
+                        $('#resetDemoCodeValue').text(resetState.demoCode);
+                        $('#resetDemoCodeBox').show();
+                    }
+                    $('#resetPhoneDisplay').text(resp.masked_phone || maskPhoneClient(phone));
+                    showResetStep(2);
+                    showResetMsg('success', '验证码已发送');
+                    startResetCountdown(60);
+                } else {
+                    showResetMsg('error', (resp && resp.message) || '发送失败');
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-paper-plane"></i> 发送验证码');
+                showResetMsg('error', '网络错误，请重试');
+            }
+        });
+    });
+
+    $('#resetVerifyBtn').on('click', function() {
+        var code = $('#resetCodeInput').val().trim();
+        if (!code) { showResetMsg('error', '请输入验证码'); return; }
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> 验证中...');
+        $.ajax({
+            url: siteUrl + '/reset_password.php',
+            type: 'POST', dataType: 'json',
+            data: { ajax_action: 'verify_code', phone: resetState.phone, code: code },
+            success: function(resp) {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-check"></i> 验证');
+                if (resp && resp.success) {
+                    resetState.username = resp.username || resetState.username;
+                    showResetStep(3);
+                } else {
+                    showResetMsg('error', (resp && resp.message) || '验证失败');
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-check"></i> 验证');
+                showResetMsg('error', '网络错误，请重试');
+            }
+        });
+    });
+
+    $('#resetResendBtn').on('click', function() {
+        if (resetState.countdownValue > 0) return;
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('发送中...');
+        $.ajax({
+            url: siteUrl + '/reset_password.php',
+            type: 'POST', dataType: 'json',
+            data: { ajax_action: 'send_code', phone: resetState.phone },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    resetState.demoCode = resp.code || '';
+                    if (resetState.demoCode) {
+                        $('#resetDemoCodeValue').text(resetState.demoCode);
+                        $('#resetDemoCodeBox').show();
+                    }
+                    btn.prop('disabled', false);
+                    btn.text('没收到？重新发送');
+                    startResetCountdown(60);
+                    showResetMsg('success', '验证码已重新发送');
+                } else {
+                    btn.prop('disabled', false);
+                    btn.text('没收到？重新发送');
+                    showResetMsg('error', (resp && resp.message) || '发送失败');
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.text('没收到？重新发送');
+                showResetMsg('error', '网络错误，请重试');
+            }
+        });
+    });
+
+    function startResetCountdown(seconds) {
+        resetState.countdownValue = seconds;
+        var btn = document.getElementById('resetResendBtn');
+        if (!btn) return;
+        btn.disabled = true;
+        resetState.countdownTimer = setInterval(function() {
+            if (resetState.countdownValue <= 0) {
+                clearInterval(resetState.countdownTimer);
+                resetState.countdownTimer = null;
+                resetState.countdownValue = 0;
+                btn.disabled = false;
+                btn.textContent = '没收到？重新发送';
+                return;
+            }
+            btn.textContent = '重新发送（' + resetState.countdownValue + 's）';
+            resetState.countdownValue--;
+        }, 1000);
+    }
+
+    $('#resetSetPwdBtn').on('click', function() {
+        var newPwd = $('#resetNewPwd').val();
+        var confirmPwd = $('#resetConfirmPwd').val();
+        if (newPwd.length < 6 || newPwd.length > 32) {
+            showResetMsg('error', '密码需6-32位字符');
+            return;
+        }
+        if (newPwd !== confirmPwd) {
+            showResetMsg('error', '两次输入的密码不一致');
+            return;
+        }
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> 重置中...');
+        $.ajax({
+            url: siteUrl + '/reset_password.php',
+            type: 'POST', dataType: 'json',
+            data: {
+                ajax_action: 'set_password',
+                phone: resetState.phone,
+                new_password: newPwd,
+                confirm_password: confirmPwd
+            },
+            success: function(resp) {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-check"></i> 确认重置密码');
+                if (resp && resp.success) {
+                    resetState.username = resp.username || resetState.username;
+                    $('#resetSuccessAccount').text(resetState.username);
+                    showResetStep(4);
+                } else {
+                    showResetMsg('error', (resp && resp.message) || '重置失败');
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-check"></i> 确认重置密码');
+                showResetMsg('error', '网络错误，请重试');
+            }
+        });
+    });
+
+    $('#resetNewPwd').on('input', function() {
+        var val = $(this).val();
+        var bar = $('#resetStrengthBar');
+        var text = $('#resetStrengthText');
+        var score = 0;
+        if (val.length >= 6) score++;
+        if (val.length >= 10) score++;
+        if (/[a-z]/.test(val) && /[A-Z]/.test(val)) score++;
+        if (/\d/.test(val)) score++;
+        if (/[^a-zA-Z0-9]/.test(val)) score++;
+        bar.removeClass('strength-weak strength-medium strength-strong');
+        if (!val) { bar.css('background', '#e0e0e0'); text.text('').css('color', '#999'); }
+        else if (score <= 2) { bar.addClass('strength-weak').css('background', ''); text.text('弱').css('color', '#ef4444'); }
+        else if (score <= 3) { bar.addClass('strength-medium').css('background', ''); text.text('中').css('color', '#e6a23c'); }
+        else { bar.addClass('strength-strong').css('background', ''); text.text('强').css('color', '#22c55e'); }
+    });
+
+    window.toggleResetPwd = function(inputId, btn) {
+        var input = document.getElementById(inputId);
+        var icon = btn.querySelector('i');
+        if (input.type === 'password') { input.type = 'text'; icon.classList.remove('fa-eye'); icon.classList.add('fa-eye-slash'); }
+        else { input.type = 'password'; icon.classList.remove('fa-eye-slash'); icon.classList.add('fa-eye'); }
+    };
+
+    $(document).on('keydown', '#resetCodeInput', function(e) {
+        if (e.which === 13) { e.preventDefault(); $('#resetVerifyBtn').click(); }
+    });
+    $(document).on('keydown', '#resetPhoneInput', function(e) {
+        if (e.which === 13) { e.preventDefault(); $('#resetSendCodeBtn').click(); }
+    });
+
+    $(document).on('click', '#resetPasswordModal', function(e) {
+        if (e.target === this) closeResetPasswordModal();
+    });
 });
 </script>
+
+<!-- ===== Password Reset Modal ===== -->
+<div class="modal-overlay" id="resetPasswordModal" style="z-index: 10000;">
+    <div class="modal-content" style="max-width: 440px; width: 92%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+            <h4 style="margin: 0; font-weight: 600;">
+                <i class="fas fa-key" style="color: var(--brand-blue);"></i>
+                重置密码
+            </h4>
+            <button type="button" onclick="closeResetPasswordModal()"
+                    style="border: none; background: transparent; font-size: 22px; color: #999; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <!-- Step 1: Send code -->
+        <div id="resetStep1">
+            <div id="resetAutoPhoneBox" style="display: none; background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 10px; padding: 16px; margin-bottom: 16px; text-align: center;">
+                <div style="font-size: 22px; font-weight: 700; color: var(--brand-blue); letter-spacing: 2px;" id="resetMaskedPhone"></div>
+                <div style="font-size: 13px; color: #888; margin-top: 6px;">验证码将发送至以上手机号</div>
+                <div style="font-size: 13px; color: #666; margin-top: 4px;">账号：<strong id="resetAccountName"></strong></div>
+            </div>
+
+            <div id="resetManualBox">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-phone"></i> 手机号</label>
+                    <input type="tel" id="resetPhoneInput" class="form-control"
+                           placeholder="请输入账号绑定的手机号" maxlength="11"
+                           pattern="1[3-9]\d{9}" style="border-radius: 8px;">
+                </div>
+                <div style="font-size: 12px; color: #888; margin-bottom: 14px;">
+                    <i class="fas fa-info-circle"></i> 该手机号必须已绑定游戏账号
+                </div>
+            </div>
+
+            <div id="resetDemoCodeBox" style="display: none; background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 14px; font-size: 14px; color: #d4880c;">
+                <i class="fas fa-info-circle"></i> 演示模式验证码：
+                <code id="resetDemoCodeValue" style="font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--brand-blue);"></code>
+            </div>
+
+            <button type="button" id="resetSendCodeBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
+                <i class="fas fa-paper-plane"></i> 发送验证码
+            </button>
+        </div>
+
+        <!-- Step 2: Verify code -->
+        <div id="resetStep2" style="display: none;">
+            <div style="text-align: center; color: #888; margin-bottom: 12px; font-size: 14px;">
+                验证码已发送至
+                <strong id="resetPhoneDisplay" style="color: var(--brand-blue);"></strong>
+            </div>
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-shield-alt"></i> 短信验证码</label>
+                <input type="text" id="resetCodeInput" class="form-control"
+                       placeholder="请输入6位验证码" maxlength="6" pattern="\d{6}"
+                       autocomplete="one-time-code"
+                       style="text-align: center; font-size: 20px; letter-spacing: 5px; border-radius: 8px;">
+            </div>
+            <button type="button" id="resetVerifyBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
+                <i class="fas fa-check"></i> 验证
+            </button>
+            <div style="text-align: center; margin-top: 10px;">
+                <button type="button" id="resetResendBtn" style="border: none; background: transparent; color: #666; font-size: 13px; cursor: pointer; text-decoration: underline;">
+                    没收到？重新发送
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Set new password -->
+        <div id="resetStep3" style="display: none;">
+            <div style="background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 10px; padding: 12px; margin-bottom: 16px; text-align: center;">
+                <div style="font-size: 13px; color: #888;">游戏账号</div>
+                <div style="font-weight: 700; color: #333; font-size: 18px;" id="resetAccountDisplay"></div>
+            </div>
+            <p style="text-align: center; color: #888; font-size: 14px; margin-bottom: 16px;">手机验证通过，请设置新密码</p>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> 新密码（6-32位）</label>
+                <div style="position: relative;">
+                    <input type="password" id="resetNewPwd" class="form-control"
+                           placeholder="请输入新密码" minlength="6" maxlength="32" required
+                           autocomplete="new-password"
+                           style="border-radius: 8px; padding-right: 40px;">
+                    <button type="button" onclick="toggleResetPwd('resetNewPwd', this)"
+                            style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #999; cursor: pointer;">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+                <div class="password-strength" id="resetStrengthBar" style="height: 4px; border-radius: 2px; margin-top: 6px; background: #e0e0e0;"></div>
+                <div class="strength-text" id="resetStrengthText" style="font-size: 12px; color: #999;"></div>
+            </div>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> 确认新密码</label>
+                <div style="position: relative;">
+                    <input type="password" id="resetConfirmPwd" class="form-control"
+                           placeholder="请再次输入新密码" minlength="6" maxlength="32" required
+                           autocomplete="new-password"
+                           style="border-radius: 8px; padding-right: 40px;">
+                    <button type="button" onclick="toggleResetPwd('resetConfirmPwd', this)"
+                            style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #999; cursor: pointer;">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <button type="button" id="resetSetPwdBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
+                <i class="fas fa-check"></i> 确认重置密码
+            </button>
+        </div>
+
+        <!-- Step 4: Success -->
+        <div id="resetStep4" style="display: none; text-align: center; padding: 20px 0;">
+            <div style="font-size: 56px; color: #22c55e; margin-bottom: 16px;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h4 style="color: #22c55e; margin-bottom: 12px; font-weight: 600;">密码重置成功！</h4>
+            <p style="color: #888; margin-bottom: 20px; font-size: 14px;">
+                账号 <strong id="resetSuccessAccount"></strong> 的密码已重置<br>
+                请使用新密码登录游戏客户端
+            </p>
+            <button type="button" onclick="closeResetPasswordModal()" class="btn btn-brand" style="border-radius: 8px; padding: 10px 40px;">
+                好的
+            </button>
+        </div>
+
+        <!-- Error/info message area -->
+        <div id="resetModalMsg" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 14px; margin-top: 12px;"></div>
+    </div>
+</div>
 
 <?php require_once 'footer.php'; ?>

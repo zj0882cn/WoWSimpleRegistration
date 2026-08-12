@@ -70,14 +70,13 @@ if ($isLoggedIn && empty($sessionPhone) && $step <= 2) {
     $errorMsg = '您尚未绑定手机号，请先绑定后再重置密码';
 }
 
-// AJAX endpoint for sending SMS code
+// AJAX endpoint for password reset operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
     header('Content-Type: application/json; charset=utf-8');
 
     if ($_POST['ajax_action'] === 'send_code') {
         $phone = trim($_POST['phone'] ?? '');
 
-        // For logged-in users, phone comes from session
         if (empty($phone) && $isLoggedIn && !empty($sessionPhone)) {
             $phone = $sessionPhone;
         }
@@ -87,7 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
             exit;
         }
 
-        // Check if this phone has a bound account
         $binding = MobileAuth::getBindingByPhone($phone);
         if (!$binding) {
             echo json_encode(['success' => false, 'message' => '该手机号未绑定游戏账号，请先绑定']);
@@ -103,6 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
 
         if ($result['success']) {
             $response['message'] = '验证码已发送';
+            $response['phone']   = $phone;
+            $response['username'] = $binding['username'];
+            $response['masked_phone'] = MobileAuth::maskPhone($phone);
             if (!empty($result['code'])) {
                 $response['code'] = $result['code'];
             }
@@ -118,6 +119,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['ajax_action'])) {
         }
 
         echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    elseif ($_POST['ajax_action'] === 'verify_code') {
+        $phone = trim($_POST['phone'] ?? '');
+        $code  = trim($_POST['code'] ?? '');
+
+        if (empty($phone)) {
+            echo json_encode(['success' => false, 'message' => 'phone_required']);
+            exit;
+        }
+        if (empty($code)) {
+            echo json_encode(['success' => false, 'message' => 'code_required']);
+            exit;
+        }
+
+        $verifyResult = MobileAuth::verifyCode($phone, $code);
+        if (!$verifyResult['success']) {
+            $msg = $verifyResult['message'];
+            $remaining = $verifyResult['remaining'] ?? null;
+            $errMsg = '验证码错误';
+            if ($msg === 'wrong_code' || $msg === 'code_not_found') {
+                if ($remaining !== null && $remaining > 0) {
+                    $errMsg = "验证码错误，剩余 {$remaining} 次尝试机会";
+                }
+            } elseif ($msg === 'max_attempts_exceeded') {
+                $errMsg = '尝试次数过多，请重新获取验证码';
+            }
+            echo json_encode(['success' => false, 'message' => $errMsg]);
+            exit;
+        }
+
+        $binding = MobileAuth::getBindingByPhone($phone);
+        $username = $binding['username'] ?? '';
+        if (empty($username)) {
+            echo json_encode(['success' => false, 'message' => '账号信息异常，请重试']);
+            exit;
+        }
+
+        $_SESSION['reset_verified_phone']  = $phone;
+        $_SESSION['reset_verified_token']  = bin2hex(random_bytes(32));
+        $_SESSION['reset_verified_time']   = time();
+        $_SESSION['reset_verified_user']   = $username;
+
+        echo json_encode([
+            'success'  => true,
+            'message'  => 'verified',
+            'username' => $username,
+            'phone'    => $phone,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    elseif ($_POST['ajax_action'] === 'set_password') {
+        $phone       = trim($_POST['phone'] ?? '');
+        $newPass     = trim($_POST['new_password'] ?? '');
+        $confirmPass = trim($_POST['confirm_password'] ?? '');
+
+        $sessionPhone  = $_SESSION['reset_verified_phone'] ?? '';
+        $sessionToken  = $_SESSION['reset_verified_token'] ?? '';
+        $sessionTime   = $_SESSION['reset_verified_time'] ?? 0;
+        $sessionUser   = $_SESSION['reset_verified_user'] ?? '';
+
+        $tokenExpired = (time() - $sessionTime) > $resetTokenTTL;
+        $tokenValid   = !empty($sessionToken) && !$tokenExpired
+                        && $sessionPhone === $phone
+                        && !empty($sessionUser);
+
+        if (!$tokenValid) {
+            echo json_encode(['success' => false, 'message' => '验证已过期，请重新操作']);
+            exit;
+        }
+
+        if (strlen($newPass) < 6 || strlen($newPass) > 32) {
+            echo json_encode(['success' => false, 'message' => '密码需6-32位字符']);
+            exit;
+        }
+        if ($newPass !== $confirmPass) {
+            echo json_encode(['success' => false, 'message' => '两次输入的密码不一致']);
+            exit;
+        }
+
+        $result = MobileAuth::changePassword($sessionUser, $newPass);
+        if ($result['success']) {
+            unset(
+                $_SESSION['reset_verified_phone'],
+                $_SESSION['reset_verified_token'],
+                $_SESSION['reset_verified_time'],
+                $_SESSION['reset_verified_user']
+            );
+            echo json_encode([
+                'success'  => true,
+                'message'  => '密码重置成功',
+                'username' => $sessionUser,
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            $msg = $result['message'];
+            if ($msg === 'account_not_found') {
+                $errMsg = '游戏账号不存在';
+            } elseif ($msg === 'soap_error') {
+                $errMsg = '服务器连接失败，请稍后重试';
+            } else {
+                $errMsg = '重置失败，请重试';
+            }
+            echo json_encode(['success' => false, 'message' => $errMsg]);
+        }
         exit;
     }
 
