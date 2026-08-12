@@ -20,6 +20,14 @@ tests/mock_oauth_codes.json
 tests/mock_oauth_tokens.json
 tests/test_wechat_bindings.json
 tests/*.log
+tests/*.py
+tests/mobile_bindings.json
+tests/sms_codes.json
+
+# ---- Test / Cleanup scripts (not for production) ----
+cleanup_test_data.php
+check_production.sh
+diagnose.php
 
 # ---- Test guide build output (keep HTML, ignore build cache) ----
 tests/test-guide/_shared/
@@ -40,5 +48,7 @@ desktop.ini
 *.log
 /error_log
 
-# ---- Production config backup ----
+# ---- Production config backup / variants ----
+application/config/config.production.php
 application/config/config.production.php.bak
+application/config/config.php.prod.bak
