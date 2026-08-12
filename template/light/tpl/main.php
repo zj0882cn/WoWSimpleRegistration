@@ -671,14 +671,26 @@ $(function() {
     }
 
     // --- Password login ---
-    function submitPasswordLogin(username, password) {
+    function submitPasswordLogin(username, password, btn) {
         $.ajax({
             url: siteUrl + '/password_login.php',
             type: 'POST',
             dataType: 'json',
             data: { username: username, password: password },
-            success: handleLoginSuccess,
+            success: function(resp) {
+                if (resp && resp.success) {
+                    // 成功：不恢复按钮，直接跳转
+                    handleLoginSuccess(resp);
+                } else {
+                    // 失败：恢复按钮并显示错误
+                    btn.prop('disabled', false);
+                    btn.html('<i class="fas fa-sign-in-alt"></i> 登录');
+                    handleLoginSuccess(resp);
+                }
+            },
             error: function(xhr, status, err) {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-sign-in-alt"></i> 登录');
                 console.error('AJAX error:', {status: status, error: err, responseText: xhr.responseText});
                 showError('网络错误: ' + (err || '未知错误'));
             }
@@ -793,7 +805,7 @@ $(function() {
         btn.html('<span class="spinner"></span> 登录中...');
         showError('');
 
-        submitPasswordLogin(username, password);
+        submitPasswordLogin(username, password, btn);
     });
 
     $('#pwdUsername, #pwdPassword').on('keypress', function(e) {
