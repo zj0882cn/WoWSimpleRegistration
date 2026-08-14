@@ -48,7 +48,7 @@ namespace WoWClient
                 return false;
             }
 #else
-            if (errno != EINPROGRESS) {
+            if (SOCKET_ERRNO() != EINPROGRESS) {
                 std::cerr << "[World] connect(" << ip_ << ":" << port_ << ") failed: " << SOCKET_ERROR_MSG() << "\n";
                 CLOSE_SOCKET(fd_); fd_ = SOCKET_INVALID;
                 return false;
@@ -103,8 +103,13 @@ namespace WoWClient
 #endif
 
         struct timeval tv{10, 0};
+#ifdef _WIN32
+        setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+        setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+#else
         setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
 
         encrypted_ = false;
         std::cout << "[World] Connected to " << ip_ << ":" << port_ << "\n";
@@ -250,64 +255,56 @@ namespace WoWClient
     bool WorldSocket::WaitAuthResponse(uint8& result, uint32& billingFlags) {
         result = 255; billingFlags = 0;
 
-        // Server sends SMSG_AUTH_RESPONSE unencrypted BEFORE initializing _authCrypt.
-        // We must read it unencrypted here. Use a polling loop since the server
-        // may still be flushing when we try to read.
-        uint8 rawHeader[4];
-        size_t totalRead = 0;
+        std::cout << "[World] WaitAuthResponse: waiting for SMSG_AUTH_RESPONSE...\n";
+
+        // Server may send multiple packets before SMSG_AUTH_RESPONSE (e.g. SMSG_ADDON_INFO).
+        // We must loop and discard any non-auth-response packets.
         auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (totalRead < 4 && std::chrono::steady_clock::now() < deadline) {
+        int selectCount = 0;
+
+        while (std::chrono::steady_clock::now() < deadline) {
             fd_set fds;
             FD_ZERO(&fds);
             FD_SET(fd_, &fds);
             struct timeval tv{0, 100000}; // 100ms
             int ret = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
             if (ret < 0) {
-                if (errno == EINTR) continue;
-                std::cerr << "[World] WaitAuthResponse: select error: " << strerror(errno) << "\n";
+                if (SOCKET_ERRNO() == EINTR) continue;
+                std::cerr << "[World] WaitAuthResponse: select error: " << SOCKET_ERROR_MSG() << "\n";
                 return false;
             }
-            if (ret == 0) continue;
+            if (ret == 0) {
+                selectCount++;
+                if (selectCount % 10 == 0) {
+                    std::cout << "[World] WaitAuthResponse: still waiting... (" << selectCount << "00ms)\n";
+                }
+                continue;
+            }
 
-            ssize_t n = ::recv(fd_, (char*)rawHeader + totalRead, 4 - totalRead, 0);
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS || errno == EINTR)
-                    continue;
-                std::cerr << "[World] WaitAuthResponse: recv error: " << strerror(errno) << "\n";
+            // Data available - try to read a packet
+            uint16 cmd;
+            std::vector<uint8> body;
+            if (!RecvPacket(cmd, body)) {
+                std::cerr << "[World] WaitAuthResponse: RecvPacket failed\n";
                 return false;
             }
-            if (n == 0) {
-                std::cerr << "[World] WaitAuthResponse: connection closed by peer\n";
-                return false;
-            }
-            totalRead += n;
-        }
-        if (totalRead < 4) {
-            std::cerr << "[World] WaitAuthResponse: timeout or partial header (" << totalRead << "/4 bytes)\n";
-            return false;
-        }
-        // NO decryption - response is unencrypted
 
-        uint16 rawSize = (uint16(rawHeader[0]) << 8) | uint16(rawHeader[1]);
-        uint16 cmd = uint16(rawHeader[2]) | (uint16(rawHeader[3]) << 8);
-        uint16 size = (rawSize >= 2) ? (rawSize - 2) : 0;
+            std::cerr << "[World] WaitAuthResponse: received cmd=0x" << std::hex << cmd << std::dec << " (" << body.size() << " bytes)\n";
 
-        std::cerr << "[World] WaitAuthResponse: rawSize=" << rawSize << " cmd=0x" << std::hex << cmd << std::dec << " size=" << size << "\n";
-
-        if (cmd == SMSG_AUTH_RESPONSE) {
-            if (size > 0) {
-                std::vector<uint8> body(size);
-                if (!ReadExact(body.data(), size)) return false;
+            if (cmd == SMSG_AUTH_RESPONSE) {
+                // Server enables _authCrypt AFTER sending this response,
+                // so we must initialize our cipher NOW to match server's state.
                 result = body.empty() ? 0 : body[0];
+                InitEncryption();
+                std::cout << "[World] WaitAuthResponse: auth response=" << (int)result << ", encryption initialized\n";
+                return true;
             }
-            // Server enables _authCrypt AFTER sending this unencrypted response,
-            // so we must initialize our cipher NOW to match server's state for
-            // subsequent encrypted exchanges (CMSG_CHAR_ENUM, etc.).
-            InitEncryption();
-            return true;
+
+            // Skip other packets (like SMSG_ADDON_INFO, SMSG_CLIENTCACHE_VERSION, etc.)
+            std::cout << "[World] WaitAuthResponse: skipping packet cmd=0x" << std::hex << cmd << std::dec << "\n";
         }
 
-        std::cerr << "[World] Expected SMSG_AUTH_RESPONSE, got cmd=0x" << std::hex << cmd << std::dec << "\n";
+        std::cerr << "[World] WaitAuthResponse: timeout waiting for SMSG_AUTH_RESPONSE\n";
         return false;
     }
 
@@ -437,8 +434,8 @@ namespace WoWClient
             struct timeval tv{0, 50000};
             int ret = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
             if (ret < 0) {
-                if (errno == EINTR) continue;
-                std::cerr << "[World] WaitWorldEnter: select error: " << strerror(errno) << "\n";
+                if (SOCKET_ERRNO() == EINTR) continue;
+                std::cerr << "[World] WaitWorldEnter: select error: " << SOCKET_ERROR_MSG() << "\n";
                 return false;
             }
             if (ret == 0) continue;
@@ -515,7 +512,7 @@ namespace WoWClient
     }
 
     bool WorldSocket::HasPendingData(uint32 timeoutMs) {
-        if (fd_ < 0) return false;
+        if (fd_ == SOCKET_INVALID) return false;
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(fd_, &fds);
@@ -661,9 +658,13 @@ namespace WoWClient
     bool WorldSocket::WriteAll(const void* buf, size_t len) {
         size_t sent = 0;
         while (sent < len) {
+#ifdef _WIN32
+            int n = ::send(fd_, (const char*)buf + sent, (int)(len - sent), MSG_NOSIGNAL);
+#else
             ssize_t n = ::send(fd_, (const char*)buf + sent, len - sent, MSG_NOSIGNAL);
+#endif
             if (n <= 0) {
-                std::cerr << "[World] send failed: " << strerror(errno) << "\n";
+                std::cerr << "[World] send failed: " << SOCKET_ERROR_MSG() << "\n";
                 return false;
             }
             sent += n;

@@ -1,11 +1,17 @@
 build/
+build-linux/
+build-win/
+release/
 *.o
 *.o.d
 *.a
 *.so
 wow_client
+wow_client.exe
 CMakeCache.txt
 CMakeFiles/
 Makefile
 cmake_install.cmake
 compile_commands.json
+__pycache__/
+*.zip
