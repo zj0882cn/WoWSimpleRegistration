@@ -294,15 +294,22 @@ int runLoginLoop(const Args& args) {
 
     std::cout << "[*] Draining login packets...\n";
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    int drainedPackets = 0;
     while (std::chrono::steady_clock::now() < deadline) {
         uint16 cmd;
         std::vector<uint8> payload;
         if (!world.RecvPacketNonBlocking(cmd, payload)) break;
+        drainedPackets++;
         if (cmd == SMSG_LOGOUT_COMPLETE) {
             std::cerr << "[-] Kicked during login\n";
             return 1;
         }
+        if (drainedPackets <= 5) {
+            std::cerr << "[Drain] Got packet cmd=0x" << std::hex << cmd << std::dec 
+                      << " size=" << payload.size() << "\n";
+        }
     }
+    std::cout << "[*] Drained " << drainedPackets << " packets\n";
 
     std::cout << "\n[+] " << chosen->name << " entered the world!\n";
 
@@ -314,9 +321,12 @@ int runLoginLoop(const Args& args) {
         world.SendChatMessage("/bot list");
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     } else {
+        std::cout << "[*] Sending chat message...\n";
         world.SendChatMessage("/bot list");
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
     }
+
+    std::cout << "[*] About to start keep-alive loop...\n";
 
     // ---- Step 5: 保活循环 ----
     std::cout << "\n[*] Starting keep-alive loop (Ctrl+C to stop)...\n\n";
@@ -324,13 +334,26 @@ int runLoginLoop(const Args& args) {
     uint32 pingSeq = 0;
     int pingFailCount = 0;
     auto lastPing = std::chrono::steady_clock::now();
+    auto lastRecvData = std::chrono::steady_clock::now();
+    auto lastStatusLog = std::chrono::steady_clock::now();
+    uint64 totalPacketsReceived = 0;
+    uint64 startTime = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 
     while (g_running && world.IsConnected()) {
         uint16 cmd;
         std::vector<uint8> payload;
+        bool received = false;
+
         while (world.RecvPacketNonBlocking(cmd, payload)) {
+            received = true;
+            totalPacketsReceived++;
+            lastRecvData = std::chrono::steady_clock::now();
+
             if (cmd == SMSG_LOGOUT_COMPLETE) {
                 std::cout << "\n[*] Logout complete, exiting...\n";
+                std::cout << "[*] Session stats: " << totalPacketsReceived
+                          << " packets received\n";
                 return 0;
             }
             // Handle server packets (respond to ping, etc.)
@@ -338,7 +361,12 @@ int runLoginLoop(const Args& args) {
         }
 
         if (!world.IsConnected()) {
-            std::cerr << "[-] Connection lost\n";
+            auto now = std::chrono::steady_clock::now();
+            auto secSinceRecv = std::chrono::duration_cast<std::chrono::seconds>(
+                now - lastRecvData).count();
+            std::cerr << "[-] Connection lost! Last data received " << secSinceRecv
+                      << " seconds ago\n";
+            std::cerr << "[-] Total packets received: " << totalPacketsReceived << "\n";
             break;
         }
 
@@ -355,13 +383,44 @@ int runLoginLoop(const Args& args) {
             } else {
                 pingFailCount++;
                 std::cerr << "[-] Ping failed (" << pingFailCount << "/3)\n";
-                if (pingFailCount >= 3) break;
+                if (pingFailCount >= 3) {
+                    std::cerr << "[-] Too many ping failures, disconnecting\n";
+                    break;
+                }
             }
             lastPing = now;
         }
 
+        // Status log every 5 minutes
+        auto statusElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - lastStatusLog);
+        if (statusElapsed.count() >= 300000) { // 5 minutes
+            auto secSinceRecv = std::chrono::duration_cast<std::chrono::seconds>(
+                now - lastRecvData).count();
+            uint64 currentTime = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            uint64 uptime = currentTime - startTime;
+            auto timeStr = std::chrono::system_clock::to_time_t(
+                std::chrono::system_clock::now());
+            char timeBuf[64];
+            strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", localtime(&timeStr));
+
+            std::cout << "[" << timeBuf << "] Status: uptime=" << uptime
+                      << "s, packets=" << totalPacketsReceived
+                      << ", last_data=" << secSinceRecv << "s ago"
+                      << ", connected=" << (world.IsConnected() ? "yes" : "no") << "\n";
+            lastStatusLog = now;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    // Print final stats
+    auto endTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    char timeBuf[64];
+    strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", localtime(&endTime));
+    std::cout << "\n[" << timeBuf << "] Final stats: " << totalPacketsReceived
+              << " packets received during session\n";
 
     world.Disconnect();
     std::cout << "\n[+] Client disconnected. Goodbye!\n";

@@ -137,13 +137,16 @@ namespace WoWClient
     bool WorldSocket::SendAuthSession(const AuthResult& auth, const std::string& username, uint8 realmId) {
         std::string user = username.empty() ? username_ : username;
         username_ = user;
-        std::string normUser = toUpper(user);
 
+        // IMPORTANT: Use the ORIGINAL username (not uppercase) for both
+        // clientDigest calculation and the packet data.
+        // AzerothCore's WorldServer uses the exact username from the packet
+        // to calculate its digest for comparison.
         uint8 zero[4] = {0,0,0,0};
         uint8 digest[20];
         SHA_CTX sha;
         SHA1_Init(&sha);
-        SHA1_Update(&sha, (unsigned char*)normUser.c_str(), normUser.size());
+        SHA1_Update(&sha, (unsigned char*)user.c_str(), user.size());
         SHA1_Update(&sha, zero, 4);
         SHA1_Update(&sha, clientSeed_, 4);
         SHA1_Update(&sha, serverSeed_, 4);
@@ -159,7 +162,7 @@ namespace WoWClient
             }
             return s;
         };
-        std::cout << "[World] normUser: " << normUser << "\n";
+        std::cout << "[World] user (original): " << user << "\n";
         std::cout << "[World] clientSeed: " << hexStr(clientSeed_, 4) << "\n";
         std::cout << "[World] serverSeed: " << hexStr(serverSeed_, 4) << "\n";
         std::cout << "[World] sessionKey: " << hexStr(auth.sessionKey, 40) << "\n";
@@ -173,14 +176,14 @@ namespace WoWClient
         uint64 dosResponse = 0;
 
         std::vector<uint8> payload;
-        payload.reserve(40 + normUser.size());
+        payload.reserve(40 + user.size());
 
         auto pushU32 = [&](uint32 v) { uint8 b[4]; writeU32LE(b, v); payload.insert(payload.end(), b, b+4); };
         auto pushU64 = [&](uint64 v) { uint8 b[8]; writeU64LE(b, v); payload.insert(payload.end(), b, b+8); };
 
         pushU32(build);
         pushU32(serverId);
-        payload.insert(payload.end(), normUser.begin(), normUser.end());
+        payload.insert(payload.end(), user.begin(), user.end());
         payload.push_back(0);
         pushU32(loginServerType);
         payload.insert(payload.end(), clientSeed_, clientSeed_ + 4);
@@ -232,7 +235,7 @@ namespace WoWClient
 
         // Send UNENCRYPTED first
         if (!SendPacket(CMSG_AUTH_SESSION, payload, /*skipEncrypt=*/true)) return false;
-        std::cout << "[World] Sent CMSG_AUTH_SESSION user=" << normUser << " realmId=" << (int)realmId << " (unencrypted)\n";
+        std::cout << "[World] Sent CMSG_AUTH_SESSION user=" << user << " realmId=" << (int)realmId << " (unencrypted)\n";
 
         return true;
     }
@@ -557,9 +560,18 @@ namespace WoWClient
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(fd_, &fds);
-        struct timeval tv{0, (long)(timeoutMs * 1000)};
-        int ret = select(fd_ + 1, &fds, nullptr, nullptr, timeoutMs > 0 ? &tv : nullptr);
-        return ret > 0;
+        
+        if (timeoutMs == 0) {
+            // Non-blocking check
+            int ret = select(fd_ + 1, &fds, nullptr, nullptr, nullptr);
+            return ret > 0;
+        } else {
+            struct timeval tv;
+            tv.tv_sec = timeoutMs / 1000;
+            tv.tv_usec = (timeoutMs % 1000) * 1000;
+            int ret = select(fd_ + 1, &fds, nullptr, nullptr, &tv);
+            return ret > 0;
+        }
     }
 
     bool WorldSocket::RecvPacketNonBlocking(uint16& cmd, std::vector<uint8>& payload) {
