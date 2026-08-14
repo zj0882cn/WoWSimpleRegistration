@@ -1,6 +1,6 @@
 <?php
 // --- Basic Configuration ---
-$config['baseurl'] = 'http://119.3.216.43:9001';
+$config['baseurl'] = 'http://127.0.0.1:7880';
 $config['page_title'] = 'WoW Server';
 $config['language'] = 'chinese-simplified';
 $config['supported_langs'] = [
@@ -37,7 +37,7 @@ $config['template'] = 'light';
 
 // --- SOAP Settings (AzerothCore server) ---
 $config['soap_for_register']  = true;
-$config['soap_host']     = '119.3.216.43';
+$config['soap_host']     = '127.0.0.1';
 $config['soap_port']     = '7878';
 $config['soap_uri']      = 'urn:AC';
 $config['soap_style']    = 'SOAP_RPC';
