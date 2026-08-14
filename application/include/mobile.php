@@ -857,10 +857,12 @@ class MobileAuth
         // Preserve existing password hash and phone if no new password/phone provided
         $existingHash = '';
         $existingPhone = $phone;
+        $existingBotPassword = '';
         foreach ($bindings as $entry) {
             if ($entry['phone'] === $phone ||
                 strtoupper($entry['username']) === strtoupper($username)) {
                 $existingHash = $entry['password_hash'] ?? '';
+                $existingBotPassword = $entry['bot_password'] ?? '';
                 if (empty($phone) && !empty($entry['phone'])) {
                     $existingPhone = $entry['phone'];
                 }
@@ -881,16 +883,69 @@ class MobileAuth
             'bind_time' => date('Y-m-d H:i:s'),
         ];
 
-        // Store password hash
+        // Store password hash + encrypted password for bot client
         if (!empty($password)) {
             $newEntry['password_hash'] = password_hash($password, PASSWORD_BCRYPT);
+            $newEntry['bot_password']  = static::encryptPassword($password);
         } elseif (!empty($existingHash)) {
             $newEntry['password_hash'] = $existingHash;
+            if (!empty($existingBotPassword)) {
+                $newEntry['bot_password'] = $existingBotPassword;
+            }
         }
 
         $bindings[] = $newEntry;
 
         return static::saveBindings(array_values($bindings));
+    }
+
+    /**
+     * Encrypt password for bot client storage.
+     */
+    private static function encryptPassword($password)
+    {
+        $key = static::getEncryptionKey();
+        $iv = openssl_random_pseudo_bytes(16);
+        $encrypted = openssl_encrypt($password, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+        return base64_encode($iv . $encrypted);
+    }
+
+    /**
+     * Decrypt password for bot client use.
+     */
+    public static function decryptPassword($encrypted)
+    {
+        if (empty($encrypted)) {
+            return '';
+        }
+        $key = static::getEncryptionKey();
+        $data = base64_decode($encrypted);
+        $iv = substr($data, 0, 16);
+        $encrypted_data = substr($data, 16);
+        $decrypted = openssl_decrypt($encrypted_data, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+        return $decrypted ?: '';
+    }
+
+    /**
+     * Get the encryption key (derived from config).
+     */
+    private static function getEncryptionKey()
+    {
+        $key = get_config('bot_encryption_key') ?: 'WoWSimpleRegistration2026BotKey!';
+        return substr(hash('sha256', $key, true), 0, 32);
+    }
+
+    /**
+     * Get bot password for a username (for client simulator).
+     */
+    public static function getBotPassword($username)
+    {
+        $username = strtoupper($username);
+        $binding = static::getBindingByUsername($username);
+        if (!$binding || empty($binding['bot_password'])) {
+            return '';
+        }
+        return static::decryptPassword($binding['bot_password']);
     }
 
     /**
@@ -911,6 +966,7 @@ class MobileAuth
         foreach ($bindings as &$entry) {
             if (strtoupper($entry['username']) === $username) {
                 $entry['password_hash'] = password_hash($newPassword, PASSWORD_BCRYPT);
+                $entry['bot_password']  = static::encryptPassword($newPassword);
                 $entry['pw_updated_at'] = date('Y-m-d H:i:s');
                 $updated = true;
                 break;

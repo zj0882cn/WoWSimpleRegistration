@@ -460,11 +460,12 @@ $siteUrl          = get_config('baseurl') ?: '';
                                         <th><?= lang('char_race') ?: '种族' ?></th>
                                         <th><?= lang('char_class') ?: '职业' ?></th>
                                         <th class="text-center"><?= lang('char_level') ?: '等级' ?></th>
+                                        <th class="text-center"><?= lang('char_action') ?: '操作' ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($charList['characters'] as $char): ?>
-                                    <tr>
+                                    <tr id="char-row-<?= htmlspecialchars($char['name']) ?>">
                                         <td style="font-weight: 600;"><?= htmlspecialchars($char['name']) ?></td>
                                         <td><?= htmlspecialchars($char['race']) ?></td>
                                         <td><?= htmlspecialchars($char['class']) ?></td>
@@ -473,10 +474,36 @@ $siteUrl          = get_config('baseurl') ?: '';
                                                 <?= (int)$char['level'] ?>
                                             </span>
                                         </td>
+                                        <td class="text-center">
+                                            <button type="button"
+                                                class="btn btn-sm btn-bot-action"
+                                                data-character="<?= htmlspecialchars($char['name']) ?>"
+                                                data-account="<?= htmlspecialchars($mbUser['username']) ?>"
+                                                style="padding: 4px 10px; font-size: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: all 0.2s;">
+                                                <i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>
+                                            </button>
+                                        </td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                            </div>
+
+                            <!-- Bot Status Panel -->
+                            <div id="botStatusPanel" style="display: none; margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%); border: 1px solid #667eea; border-radius: 10px;">
+                                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                    <div id="botStatusIcon" style="width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 10px; background: #f39c12;">
+                                        <i class="fas fa-robot" style="color: #fff;"></i>
+                                    </div>
+                                    <div>
+                                        <strong id="botStatusTitle">挂机状态</strong>
+                                        <div id="botStatusMessage" style="font-size: 13px; color: #666;">准备中...</div>
+                                    </div>
+                                </div>
+                                <div id="botLog" style="max-height: 120px; overflow-y: auto; font-size: 12px; font-family: monospace; background: #1a1a2e; color: #0f0; padding: 10px; border-radius: 6px; display: none;"></div>
+                                <button type="button" id="stopBotBtn" style="margin-top: 10px; padding: 5px 12px; background: #e74c3c; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; display: none;">
+                                    <i class="fas fa-stop"></i> 停止挂机
+                                </button>
                             </div>
                         <?php elseif ($soapOk): ?>
                             <div style="text-align: center; padding: 30px; color: #999;">
@@ -1263,6 +1290,102 @@ $(function() {
     $(document).on('click', '#resetPasswordModal', function(e) {
         if (e.target === this) closeResetPasswordModal();
     });
+
+    // ===== Bot / Idle Feature =====
+    var botState = {};
+
+    $('.btn-bot-action').on('click', function() {
+        var btn = $(this);
+        var character = btn.data('character');
+        var account = btn.data('account');
+        startBotMode(account, character, btn);
+    });
+
+    function startBotMode(account, character, btn) {
+        var panel = $('#botStatusPanel');
+        var statusIcon = $('#botStatusIcon');
+        var statusTitle = $('#botStatusTitle');
+        var statusMsg = $('#botStatusMessage');
+        var botLog = $('#botLog');
+        var stopBtn = $('#stopBotBtn');
+
+        panel.show();
+        botLog.show().html('');
+        stopBtn.show();
+
+        function logMsg(msg, color) {
+            var cls = color ? ('color:' + color + ';') : '';
+            botLog.append('<div style="' + cls + '">' + msg + '</div>');
+            botLog.scrollTop(botLog[0].scrollHeight);
+        }
+
+        logMsg('[' + new Date().toLocaleTimeString() + '] 正在启动挂机模式...');
+        statusIcon.css('background', '#f39c12');
+        statusTitle.text('挂机中');
+        statusMsg.text('正在连接游戏服务器...');
+
+        // Disable button and change text
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> 挂机中');
+
+        // Track bot state
+        var botId = account + '_' + character;
+        botState[botId] = { status: 'starting' };
+
+        $.ajax({
+            url: siteUrl + '/bot_start.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { account: account, character: character },
+            timeout: 30000,
+            success: function(resp) {
+                if (resp && resp.success) {
+                    logMsg('[' + new Date().toLocaleTimeString() + '] ✓ ' + (resp.message || '角色已登录，Bot模式已启动'));
+                    statusIcon.css('background', '#28a745');
+                    statusTitle.text('挂机运行中');
+                    statusMsg.text('角色"' + character + '" 正在挂机中');
+                    botState[botId].status = 'running';
+
+                    if (resp.logs && Array.isArray(resp.logs)) {
+                        resp.logs.forEach(function(l) {
+                            logMsg(l);
+                        });
+                    }
+                } else {
+                    var errMsg = (resp && resp.message) || '启动失败，请重试';
+                    logMsg('[' + new Date().toLocaleTimeString() + '] ✗ ' + errMsg, '#ff6b6b');
+                    statusIcon.css('background', '#e74c3c');
+                    statusTitle.text('挂机失败');
+                    statusMsg.text(errMsg);
+                    botState[botId].status = 'error';
+                    btn.prop('disabled', false);
+                    btn.html('<i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>');
+                }
+            },
+            error: function(xhr, status, err) {
+                logMsg('[' + new Date().toLocaleTimeString() + '] ✗ 网络错误: ' + (err || '未知错误'), '#ff6b6b');
+                statusIcon.css('background', '#e74c3c');
+                statusTitle.text('挂机失败');
+                statusMsg.text('连接服务器失败，请重试');
+                botState[botId].status = 'error';
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>');
+            }
+        });
+    }
+
+    $('#stopBotBtn').on('click', function() {
+        var panel = $('#botStatusPanel');
+        var botLog = $('#botLog');
+        panel.hide();
+        botLog.hide();
+        $(this).hide();
+        $('.btn-bot-action').each(function() {
+            $(this).prop('disabled', false);
+            $(this).html('<i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>');
+        });
+    });
+
 });
 </script>
 
