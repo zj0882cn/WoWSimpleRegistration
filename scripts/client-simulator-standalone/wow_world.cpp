@@ -307,12 +307,16 @@ namespace WoWClient
                 }
                 result = body.empty() ? 0 : body[0];
                 std::cout << "[World] WaitAuthResponse: auth response=" << (int)result << " (unencrypted)\n";
+                // Initialize encryption AFTER receiving SMSG_AUTH_RESPONSE
+                // This matches server behavior: server sends SMSG_AUTH_RESPONSE unencrypted,
+                // then initializes encryption for subsequent packets
+                InitEncryption();
                 return true;
             }
         }
 
         // Step 2: Initialize encryption and try decrypted
-        std::cout << "[World] WaitAuthResponse: initializing encryption, retrying with decryption...\n";
+        std::cout << "[World] WaitAuthResponse: initial encryption, retrying with decryption...\n";
         InitEncryption();
 
         // Need to re-read the data since we already consumed the raw header
@@ -348,6 +352,7 @@ namespace WoWClient
                 }
                 result = body.empty() ? 0 : body[0];
                 std::cout << "[World] WaitAuthResponse: auth response=" << (int)result << " (encrypted)\n";
+                // Encryption already initialized above
                 return true;
             }
         }
@@ -510,8 +515,10 @@ namespace WoWClient
     }
 
     bool WorldSocket::SendPing(uint32 seq) {
-        std::vector<uint8> payload(4);
+        // WoW CMSG_PING format: uint32 ping + uint32 latency
+        std::vector<uint8> payload(8);
         writeU32LE(payload.data(), seq);
+        writeU32LE(payload.data() + 4, 0); // latency = 0 for now
         if (!SendPacket(CMSG_PING, payload)) return false;
 
         uint16 cmd;
@@ -558,6 +565,42 @@ namespace WoWClient
     bool WorldSocket::RecvPacketNonBlocking(uint16& cmd, std::vector<uint8>& payload) {
         if (!HasPendingData(0)) return false;
         return RecvPacket(cmd, payload);
+    }
+
+    // Handle server packets and send responses as needed
+    bool WorldSocket::HandleServerPacket(uint16 cmd, const std::vector<uint8>& payload) {
+        switch (cmd) {
+            case MSG_MINIMAP_PING: {
+                // Server sends MSG_MINIMAP_PING, client must respond with same data
+                // Format: uint64 guid, float x, float y
+                if (payload.size() >= 16) {
+                    uint64 guid = readU64LE(payload.data());
+                    float x = readFloatLE(payload.data() + 8);
+                    float y = readFloatLE(payload.data() + 12);
+
+                    // Send response with same data
+                    std::vector<uint8> response(16);
+                    writeU64LE(response.data(), guid);
+                    writeU32LE(response.data() + 8, *reinterpret_cast<uint32*>(&x));
+                    writeU32LE(response.data() + 12, *reinterpret_cast<uint32*>(&y));
+                    SendPacket(MSG_MINIMAP_PING, response);
+                }
+                break;
+            }
+            case SMSG_PONG:
+                // Server responded to our ping, nothing to do
+                break;
+            case SMSG_LOGOUT_COMPLETE:
+                // Server sent logout complete
+                std::cout << "[World] Received SMSG_LOGOUT_COMPLETE\n";
+                break;
+            default:
+                // Log unknown packets for debugging
+                std::cerr << "[World] Received unhandled packet: cmd=0x" << std::hex << cmd
+                          << std::dec << " size=" << payload.size() << "\n";
+                break;
+        }
+        return true;
     }
 
     // ---- Private implementations ----

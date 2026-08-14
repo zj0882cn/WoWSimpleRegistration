@@ -333,6 +333,8 @@ int runLoginLoop(const Args& args) {
                 std::cout << "\n[*] Logout complete, exiting...\n";
                 return 0;
             }
+            // Handle server packets (respond to ping, etc.)
+            world.HandleServerPacket(cmd, payload);
         }
 
         if (!world.IsConnected()) {

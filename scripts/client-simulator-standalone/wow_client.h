@@ -162,6 +162,7 @@ namespace WoWClient
     constexpr uint16 SMSG_NEW_WORLD         = 0x003E;
     constexpr uint16 SMSG_TRANSFER_PENDING  = 0x003F;
     constexpr uint16 SMSG_TRANSFER_ABORTED = 0x0040;
+    constexpr uint16 MSG_MINIMAP_PING       = 0x01D5;
 
     // =========================================================================
     // 数据结构
@@ -572,6 +573,7 @@ namespace WoWClient
         bool SendChatMessage(const std::string& msg, uint8 channel = 0);
         bool HasPendingData(uint32 timeoutMs);
         bool RecvPacketNonBlocking(uint16& cmd, std::vector<uint8>& payload);
+        bool HandleServerPacket(uint16 cmd, const std::vector<uint8>& payload);
 
     private:
         std::string ip_;
