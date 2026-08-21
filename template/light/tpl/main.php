@@ -1,38 +1,48 @@
 <?php
 /**
- * Main Template — One-Click Login Mode (Light Theme)
+ * Main Template — Email Login Mode (Light Theme)
  *
  * Homepage shows:
  *   1. Server status (online players, uptime, etc.) via SOAP
- *   2. One-click login (mobile) or QR code scan (PC)
- *   3. Connection guide & contact tabs
+ *   2. Email + verification code login / registration
+ *   3. Password login for returning users
+ *   4. Account management (when logged in)
+ *   5. Connection guide & contact tabs
  *
- * @author Amin Mahmoudi (MasterkinG)
- **/
+ * @author AzerothCore Community
+ */
 require_once 'header.php';
 
-$mbLoggedIn = MobileAuth::isLoggedIn();
-$mbUser     = MobileAuth::getCurrentUser();
+$mbLoggedIn = EmailAuth::isLoggedIn();
+$mbUser     = EmailAuth::getCurrentUser();
 
 // Check if this is a new registration (show password once)
-$newAccount = !empty($_SESSION['mobile_new_account']) ? $_SESSION['mobile_new_account'] : false;
-$newPassword = $_SESSION['mobile_new_password'] ?? '';
+$newAccount = !empty($_SESSION['user_new_account']) ? $_SESSION['user_new_account'] : false;
+$newPassword = $_SESSION['user_new_password'] ?? '';
 if ($newAccount) {
-    unset($_SESSION['mobile_new_account'], $_SESSION['mobile_new_password']);
+    unset($_SESSION['user_new_account'], $_SESSION['user_new_password']);
 }
 
 // Get server status via SOAP
-$serverStatus = MobileAuth::getServerStatus();
+$serverStatus = EmailAuth::getServerStatus();
 $serverOnline = $serverStatus !== false;
 
-// Detect mobile device
+// Detect mobile device (UI layout only, not used for auth flow)
 $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 $isMobile = (bool)preg_match('/Android|iPhone|iPad|iPod|Windows Phone|Mobile/i', $userAgent);
 
-// Get one-click login provider config
-$oneclickProvider = get_config('numberauth_provider') ?: 'demo';
-$oneclickAppKey   = get_config('numberauth_aliyun_appkey') ?: '';
-$siteUrl          = get_config('baseurl') ?: '';
+// Get config
+$emailProvider = get_config('email_provider') ?: 'smtp';
+$siteUrl       = get_config('baseurl') ?: '';
+$emailEnabled  = EmailAuth::isEnabled();
+$emailLoginEnabled      = EmailAuth::isFeatureEnabled('login');
+$emailPasswordLoginOn   = EmailAuth::isFeatureEnabled('password_login');
+$emailRegisterEnabled   = EmailAuth::isFeatureEnabled('register');
+$emailResetEnabled      = EmailAuth::isFeatureEnabled('reset');
+$emailBindEnabled       = EmailAuth::isFeatureEnabled('bind');
+
+// Get email login result from session (set by email_verify.php redirect)
+$emailLoginMsg = $loginMsg ?? '';
 ?>
 
 <div class="row">
@@ -81,6 +91,14 @@ $siteUrl          = get_config('baseurl') ?: '';
                 <div class="alert-wechat-error">
                     <i class="fas fa-exclamation-circle"></i>
                     <?= lang('password_reset_failed') ?: '密码重置失败：' ?> <?= htmlspecialchars($resetResult['message']) ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Login success message -->
+            <?php if (!empty($emailLoginMsg)): ?>
+                <div class="alert alert-info" style="border-radius: 8px; margin-bottom: 15px;">
+                    <i class="fas fa-info-circle"></i>
+                    <?= htmlspecialchars($emailLoginMsg) ?>
                 </div>
             <?php endif; ?>
 
@@ -187,15 +205,17 @@ $siteUrl          = get_config('baseurl') ?: '';
                                 <a href="<?= get_config('baseurl') ?>/change_password.php"
                                    class="btn btn-primary" style="padding: 10px 24px;">
                                     <i class="fas fa-key"></i>
-                                    修改密码
+                                    <?= lang('change_password') ?: '修改密码' ?>
                                 </a>
+                                <?php if ($emailResetEnabled): ?>
                                 <a href="javascript:void(0)"
                                    onclick="openResetPasswordModal()"
                                    class="btn btn-warning" style="padding: 10px 24px;">
                                     <i class="fas fa-redo"></i>
-                                    忘记密码
+                                    <?= lang('forgot_password') ?: '忘记密码' ?>
                                 </a>
-                                <a href="<?= get_config('baseurl') ?>?mobile_logout=1"
+                                <?php endif; ?>
+                                <a href="<?= get_config('baseurl') ?>?logout=1"
                                    class="btn btn-outline-secondary" style="padding: 10px 24px; margin-top: 10px;">
                                     <i class="fas fa-sign-out-alt"></i>
                                     <?= lang('logout') ?: '退出登录' ?>
@@ -204,106 +224,120 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                             <div class="soap-notice">
                                 <i class="fas fa-info-circle"></i>
-                                修改密码：需输入旧密码验证后修改。忘记密码：需手机短信验证后重置。
+                                <?= lang('email_manage_notice') ?: '修改密码：需输入旧密码验证后修改。忘记密码：需邮箱验证码验证后重置。' ?>
                             </div>
                         </div>
 
                     <?php else: ?>
-                        <!-- ===== Not Logged In: One-Click Login ===== -->
+                        <!-- ===== Not Logged In: Email Login / Registration ===== -->
                         <div class="mobile-login-section login-area">
 
                         <!-- Success modal displayed within login area -->
-                        <?php if (!empty($mobileLoginMsg)): ?>
+                        <?php if (!empty($emailLoginMsg)): ?>
                             <div class="modal-overlay" id="loginSuccessModal">
                                 <div class="modal-content">
                                     <div class="modal-icon success">
                                         <i class="fas fa-check-circle"></i>
                                     </div>
-                                    <div class="modal-message"><?= htmlspecialchars($mobileLoginMsg) ?></div>
+                                    <div class="modal-message"><?= htmlspecialchars($emailLoginMsg) ?></div>
                                     <button class="modal-close" onclick="document.getElementById('loginSuccessModal').style.display='none'">
-                                        好的
+                                        <?= lang('ok') ?: '好的' ?>
                                     </button>
                                 </div>
                             </div>
                         <?php endif; ?>
 
-                        <?php if ($isMobile): ?>
-                            <!-- ===== Mobile: One-Click Login ===== -->
-                            <h3>
-                                <i class="fas fa-bolt" style="color: var(--brand-blue);"></i>
-                                <?= lang('oneclick_login_title') ?: '本机号码一键登录' ?>
-                            </h3>
-                            <p>
-                                <?= lang('oneclick_login_hint') ?: '自动识别本机手机号，无需输入手机号和验证码，一键完成注册/登录。' ?>
-                            </p>
-
-                            <!-- One-click login button -->
-                            <div class="oneclick-section">
-                                <button type="button" id="oneclickBtn" class="oneclick-btn">
-                                    <i class="fas fa-shield-alt"></i>
-                                    <?= lang('oneclick_login_btn') ?: '一键登录' ?>
-                                </button>
+                        <?php if (!$emailEnabled): ?>
+                            <!-- Email auth disabled notice -->
+                            <div class="demo-notice" style="max-width: 400px; margin: 20px auto;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <?= lang('email_auth_disabled') ?: '邮箱登录功能未启用，请联系管理员。' ?>
                             </div>
-
-                            <?php if ($oneclickProvider === 'demo'): ?>
-                            <!-- Demo mode: phone + username + password input -->
-                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 0 auto;">
-                                <div class="input-group" style="margin-bottom: 10px;">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text"><i class="fas fa-phone"></i></span>
-                                    </div>
-                                    <input type="tel" id="demoPhone" class="form-control"
-                                           placeholder="<?= lang('oneclick_demo_hint') ?: '手机号（自动验证）' ?>"
-                                           maxlength="11" pattern="1[3-9]\d{9}">
-                                </div>
-                                <div class="input-group" style="margin-bottom: 10px;">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                    </div>
-                                    <input type="text" id="demoUsername" class="form-control"
-                                           placeholder="自定义游戏账号（3-16位字母数字）"
-                                           minlength="3" maxlength="16" pattern="[A-Za-z0-9]{3,16}">
-                                </div>
-                                <div class="input-group" style="margin-bottom: 10px;">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                    </div>
-                                    <input type="password" id="demoPassword" class="form-control"
-                                           placeholder="<?= lang('password_hint') ?: '设置游戏密码（6-32位）' ?>"
-                                           minlength="6" maxlength="32">
-                                </div>
-                                <button type="button" id="demoLoginBtn" class="btn btn-outline-primary btn-block">
-                                    <i class="fas fa-sign-in-alt"></i>
-                                    <?= lang('register_btn') ?: '注册 / 登录' ?>
-                                </button>
-                            </div>
-                            <?php endif; ?>
-
                         <?php else: ?>
-                            <!-- ===== PC: Show QR code to scan with phone ===== -->
+                            <!-- ===== Email + Verification Code Login ===== -->
                             <h3>
-                                <i class="fas fa-qrcode" style="color: var(--brand-blue);"></i>
-                                <?= lang('oneclick_login_title') ?: '本机号码一键登录' ?>
+                                <i class="fas fa-envelope" style="color: var(--brand-blue);"></i>
+                                <?= lang('email_login_title') ?: '邮箱登录 / 注册' ?>
                             </h3>
                             <p>
-                                <?= lang('oneclick_login_hint') ?: '自动识别本机手机号，无需输入手机号和验证码，一键完成注册/登录。' ?>
+                                <?= lang('email_login_hint') ?: '输入邮箱获取验证码，首次登录将自动创建游戏账号。' ?>
                             </p>
 
-                            <div class="oneclick-section" style="padding: 30px 0;">
-                                <div id="qrcode" style="display: inline-block; padding: 16px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
-                                <p style="margin-top: 16px; font-size: 14px; color: var(--text-muted);">
-                                    <i class="fas fa-mobile-alt"></i>
-                                    <?= lang('qr_scan_hint') ?: '请用手机扫描二维码，在手机上完成一键登录' ?>
-                                </p>
-                            </div>
+                            <!-- Email login form -->
+                            <div class="email-login-form" style="max-width: 400px; margin: 0 auto;">
+                                <div class="input-group" style="margin-bottom: 10px;">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+                                    </div>
+                                    <input type="email" id="loginEmail" class="form-control"
+                                           placeholder="<?= lang('enter_email') ?: '请输入邮箱' ?>"
+                                           autocomplete="email"
+                                           style="border-radius: 8px;">
+                                </div>
 
+                                <!-- Step 1: Send code button -->
+                                <button type="button" id="sendEmailCodeBtn" class="btn btn-outline-primary btn-block" style="border-radius: 8px; margin-bottom: 10px;">
+                                    <i class="fas fa-paper-plane"></i>
+                                    <?= lang('send_code') ?: '获取验证码' ?>
+                                </button>
+
+                                <!-- Verification code + username + password (hidden until code sent) -->
+                                <div id="emailCodeSection" style="display: none;">
+                                    <div class="input-group" style="margin-bottom: 10px;">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
+                                        </div>
+                                        <input type="text" id="loginCode" class="form-control"
+                                               placeholder="<?= lang('enter_code') ?: '验证码' ?>"
+                                               maxlength="6" pattern="\d{6}"
+                                               style="border-radius: 8px; text-align: center; font-size: 20px; letter-spacing: 5px;">
+                                        <button type="button" id="resendCodeBtn" class="btn btn-outline-secondary" style="border-radius: 0 8px 8px 0;">
+                                            <?= lang('resend_code') ?: '重新发送' ?>
+                                        </button>
+                                    </div>
+
+                                    <?php if ($emailRegisterEnabled): ?>
+                                    <div class="input-group" style="margin-bottom: 10px;">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                        </div>
+                                        <input type="text" id="loginUsername" class="form-control"
+                                               placeholder="<?= lang('username_hint') ?: '自定义游戏账号（3-16位字母数字）' ?>"
+                                               minlength="3" maxlength="16" pattern="[A-Za-z0-9]{3,16}"
+                                               style="border-radius: 8px;">
+                                    </div>
+
+                                    <div class="input-group" style="margin-bottom: 10px;">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                        </div>
+                                        <input type="password" id="loginPassword" class="form-control"
+                                               placeholder="<?= lang('password_hint') ?: '设置游戏密码（6-32位）' ?>"
+                                               minlength="6" maxlength="32"
+                                               style="border-radius: 8px;">
+                                    </div>
+                                    <?php else: ?>
+                                    <input type="hidden" id="loginUsername" value="">
+                                    <input type="hidden" id="loginPassword" value="">
+                                    <?php endif; ?>
+
+                                    <button type="button" id="loginSubmitBtn" class="btn btn-brand btn-block" style="border-radius: 8px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff; border: none; padding: 12px; font-size: 15px; font-weight: 600; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
+                                        <i class="fas fa-sign-in-alt"></i>
+                                        <?= lang('login_register') ?: '登录 / 注册' ?>
+                                    </button>
+                                </div>
+                            </div>
                         <?php endif; ?>
 
                             <!-- Error message display -->
-                            <div id="oneclickError" class="alert alert-danger" style="display: none; margin-top: 5px; font-size: 14px;"></div>
+                            <div id="loginError" class="alert alert-danger" style="display: none; margin-top: 5px; font-size: 14px;"></div>
 
                             <!-- ===== Password Login (for returning users) ===== -->
-                            <div class="oneclick-demo-input" style="max-width: 360px; margin: 10px auto 0;">
+                            <?php if ($emailPasswordLoginOn): ?>
+                            <div class="email-login-form" style="max-width: 360px; margin: 20px auto 0;">
+                                <h6 style="color: var(--text-muted); margin-bottom: 10px;">
+                                    <i class="fas fa-key"></i> <?= lang('password_login_title') ?: '已有账号？使用密码登录' ?>
+                                </h6>
                                 <div class="input-group" style="margin-bottom: 10px;">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text"><i class="fas fa-user"></i></span>
@@ -324,6 +358,7 @@ $siteUrl          = get_config('baseurl') ?: '';
                                     <i class="fas fa-sign-in-alt"></i>
                                     <?= lang('login_btn') ?: '登录' ?>
                                 </button>
+                                <?php if ($emailResetEnabled): ?>
                                 <div class="text-center" style="margin-top: 10px;">
                                     <a href="javascript:void(0)"
                                        onclick="openResetPasswordModal()"
@@ -332,7 +367,9 @@ $siteUrl          = get_config('baseurl') ?: '';
                                         <?= lang('forgot_password') ?: '忘记密码？' ?>
                                     </a>
                                 </div>
+                                <?php endif; ?>
                             </div>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -347,7 +384,7 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                         <?php
                         // Get character list (includes account ID) from SOAP
-                        $charList = MobileAuth::getAccountCharacters($mbUser['username']);
+                        $charList = EmailAuth::getAccountCharacters($mbUser['username']);
                         $soapOk = $charList !== false;
                         $charCount = ($charList && !empty($charList['characters'])) ? count($charList['characters']) : 0;
                         ?>
@@ -384,47 +421,49 @@ $siteUrl          = get_config('baseurl') ?: '';
 
                             <div class="row" style="margin-bottom: 12px; align-items: center;">
                                 <div class="col-5">
-                                    <span class="label"><i class="fas fa-phone"></i> <?= lang('bound_phone') ?: '绑定手机' ?></span>
+                                    <span class="label"><i class="fas fa-envelope"></i> <?= lang('bound_email') ?: '绑定邮箱' ?></span>
                                 </div>
                                 <div class="col-7">
-                                    <?php if (!empty($mbUser['phone'])): ?>
-                                        <span class="value" style="font-size: 14px;">
-                                            <?= htmlspecialchars(MobileAuth::maskPhone($mbUser['phone'])) ?>
+                                    <?php if (!empty($mbUser['email'])): ?>
+                                        <span class="value" style="font-size: 14px; word-break: break-all;">
+                                            <?= htmlspecialchars(EmailAuth::maskEmail($mbUser['email'])) ?>
                                         </span>
                                     <?php else: ?>
                                         <span class="value" style="font-size: 14px; color: #e6a23c;">
-                                            <i class="fas fa-exclamation-triangle"></i> 未绑定
+                                            <i class="fas fa-exclamation-triangle"></i> <?= lang('not_bound') ?: '未绑定' ?>
                                         </span>
-                                        <button type="button" id="bindPhoneBtn" class="btn btn-outline-primary btn-sm" style="margin-left: 10px; padding: 2px 12px; font-size: 12px;">
-                                            <i class="fas fa-link"></i> 绑定
+                                        <?php if ($emailBindEnabled): ?>
+                                        <button type="button" id="bindEmailBtn" class="btn btn-outline-primary btn-sm" style="margin-left: 10px; padding: 2px 12px; font-size: 12px;">
+                                            <i class="fas fa-link"></i> <?= lang('bind') ?: '绑定' ?>
                                         </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                             </div>
 
-                            <!-- Bind phone form (hidden by default) -->
-                            <div id="bindPhoneForm" style="display: none; margin-bottom: 12px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                            <!-- Bind email form (hidden by default) -->
+                            <div id="bindEmailForm" style="display: none; margin-bottom: 12px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                                 <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
                                     <i class="fas fa-info-circle" style="color: var(--brand-blue);"></i>
-                                    绑定手机号后可使用一键登录，无需每次输入密码
+                                    <?= lang('bind_email_hint') ?: '绑定邮箱后可使用邮箱验证码登录，无需每次输入密码' ?>
                                 </div>
                                 <div class="input-group" style="margin-bottom: 8px;">
                                     <div class="input-group-prepend">
-                                        <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                                        <span class="input-group-text"><i class="fas fa-envelope"></i></span>
                                     </div>
-                                    <input type="tel" id="bindPhoneInput" class="form-control" placeholder="请输入手机号" maxlength="11" pattern="1[3-9]\d{9}">
+                                    <input type="email" id="bindEmailInput" class="form-control" placeholder="<?= lang('enter_email') ?: '请输入邮箱' ?>" style="border-radius: 8px;">
                                 </div>
                                 <div class="input-group" style="margin-bottom: 8px;">
                                     <div class="input-group-prepend">
                                         <span class="input-group-text"><i class="fas fa-key"></i></span>
                                     </div>
-                                    <input type="text" id="bindCodeInput" class="form-control" placeholder="验证码" maxlength="6">
-                                    <button type="button" id="bindSendCodeBtn" class="btn btn-outline-primary">获取验证码</button>
+                                    <input type="text" id="bindEmailCodeInput" class="form-control" placeholder="<?= lang('enter_code') ?: '验证码' ?>" maxlength="6" style="border-radius: 8px;">
+                                    <button type="button" id="bindSendCodeBtn" class="btn btn-outline-primary"><?= lang('get_code') ?: '获取验证码' ?></button>
                                 </div>
-                                <button type="button" id="bindSubmitBtn" class="btn btn-primary btn-sm" style="width: 100%;">
-                                    <i class="fas fa-check"></i> 确认绑定
+                                <button type="button" id="bindEmailSubmitBtn" class="btn btn-primary btn-sm" style="width: 100%;">
+                                    <i class="fas fa-check"></i> <?= lang('confirm_bind') ?: '确认绑定' ?>
                                 </button>
-                                <div id="bindPhoneError" style="display: none; margin-top: 8px; font-size: 13px; color: #dc3545;"></div>
+                                <div id="bindEmailError" style="display: none; margin-top: 8px; font-size: 13px; color: #dc3545;"></div>
                             </div>
 
                             <div class="row" style="margin-bottom: 0;">
@@ -496,13 +535,13 @@ $siteUrl          = get_config('baseurl') ?: '';
                                         <i class="fas fa-robot" style="color: #fff;"></i>
                                     </div>
                                     <div>
-                                        <strong id="botStatusTitle">挂机状态</strong>
-                                        <div id="botStatusMessage" style="font-size: 13px; color: #666;">准备中...</div>
+                                        <strong id="botStatusTitle"><?= lang('bot_idle_status') ?: '挂机状态' ?></strong>
+                                        <div id="botStatusMessage" style="font-size: 13px; color: #666;"><?= lang('bot_preparing') ?: '准备中...' ?></div>
                                     </div>
                                 </div>
                                 <div id="botLog" style="max-height: 120px; overflow-y: auto; font-size: 12px; font-family: monospace; background: #1a1a2e; color: #0f0; padding: 10px; border-radius: 6px; display: none;"></div>
                                 <button type="button" id="stopBotBtn" style="margin-top: 10px; padding: 5px 12px; background: #e74c3c; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; display: none;">
-                                    <i class="fas fa-stop"></i> 停止挂机
+                                    <i class="fas fa-stop"></i> <?= lang('stop_bot') ?: '停止挂机' ?>
                                 </button>
                             </div>
                         <?php elseif ($soapOk): ?>
@@ -563,7 +602,7 @@ $siteUrl          = get_config('baseurl') ?: '';
                         <ol>
                             <li><?= lang('howto_step1') ?: '修改 realmlist.wtf 文件，将内容设为：' ?>
                                 <br><code>set realmlist <?= htmlspecialchars(get_config('realmlist')) ?></code></li>
-                            <li><?= lang('howto_step2_oneclick') ?: '在手机上打开本站，点击一键登录，系统将自动识别本机号码并创建游戏账号。' ?></li>
+                            <li><?= lang('howto_step2_email') ?: '在本站使用邮箱验证码登录，系统将自动创建游戏账号。' ?></li>
                             <li><?= lang('howto_step3') ?: '使用生成的账号和密码登录游戏。' ?></li>
                         </ol>
                     </div>
@@ -619,32 +658,10 @@ $siteUrl          = get_config('baseurl') ?: '';
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 
-<?php if (!$isMobile): ?>
-<!-- QR Code library for PC -->
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<?php endif; ?>
-
-<?php if ($isMobile && $oneclickProvider === 'aliyun' && !empty($oneclickAppKey)): ?>
-<!-- Aliyun NumberAuth H5 SDK -->
-<script src="https://g.alicdn.com/AliyunNumberAuthSDK/aliyun-numberauth-sdk.min.js"></script>
-<?php endif; ?>
-
 <script>
 // 版本号 - 用于调试缓存问题
-console.log('[WoWSimpleRegistration] 版本: 20260813-reset-modal');
-console.log('[WoWSimpleRegistration] showError fix 已启用');
-
-// 自动滚动到登录区域（确保弹窗靠近输入区可见）
-document.addEventListener('DOMContentLoaded', function() {
-    var modal = document.getElementById('loginSuccessModal');
-    var loginArea = document.querySelector('.login-area');
-    if (modal && loginArea) {
-        // 平滑滚动到登录区域，让弹窗在输入区上方居中显示
-        setTimeout(function() {
-            loginArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
-    }
-});
+console.log('[WoWSimpleRegistration] 版本: 20260813-email-auth');
+console.log('[WoWSimpleRegistration] Email auth UI 已启用');
 
 // 全局错误捕获，防止任何 JS 错误影响登录功能
 window.onerror = function(msg, url, line, col, error) {
@@ -654,95 +671,191 @@ window.onerror = function(msg, url, line, col, error) {
 
 $(function() {
     var siteUrl = window.location.origin;
-    var provider = '<?= addslashes($oneclickProvider) ?>';
+    var provider = '<?= addslashes($emailProvider) ?>';
     var isMobile = <?= $isMobile ? 'true' : 'false' ?>;
-
-    // --- PC: Generate QR Code ---
-    var qrcodeEl = document.getElementById('qrcode');
-    if (!isMobile && typeof QRCode !== 'undefined' && qrcodeEl) {
-        try {
-            new QRCode(qrcodeEl, {
-                text: siteUrl,
-                width: 200,
-                height: 200,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        } catch (e) {
-            console.warn('QR code generation failed:', e);
-        }
-    }
 
     // --- Error display helper ---
     function showError(msg) {
-        var el = $('#oneclickError');
-        // 如果 msg 为空、null 或 undefined，隐藏错误
+        var el = $('#loginError');
         if (!msg) {
             el.hide();
             return;
         }
         var friendlyMsgs = {
-            'soap_create_failed': '游戏服务器连接失败，请稍后重试',
-            'soap_error': '游戏服务器连接失败，请稍后重试',
-            'mobile_auth_disabled': '登录功能未启用',
-            'invalid_phone': '手机号格式不正确',
-            'invalid_password': '密码需6-32位字符',
-            'invalid_username': '账号需3-16位字母或数字',
-            'username_taken': '该账号已被使用，请换一个',
-            'phone_required': '请输入手机号',
-            'password_required': '请输入密码',
-            'username_required': '请输入游戏账号',
-            'account_not_found': '账号不存在，请检查或先注册',
-            'no_password_hash': '该账号未设置密码，请先通过手机号一键登录',
-            'wrong_password': '密码错误，请重新输入',
-            'token_required': '认证令牌缺失，请重试',
-            'numberauth_config_incomplete': '号码认证配置不完整，请联系管理员',
-            'numberauth_request_failed': '号码认证请求失败，请重试',
-            'numberauth_failed': '号码认证失败，请重试'
+            'soap_create_failed': '<?= lang('soap_create_failed') ?: '游戏服务器连接失败，请稍后重试' ?>',
+            'soap_error': '<?= lang('soap_error') ?: '游戏服务器连接失败，请稍后重试' ?>',
+            'email_auth_disabled': '<?= lang('email_auth_disabled') ?: '邮箱登录功能未启用' ?>',
+            'invalid_email': '<?= lang('invalid_email') ?: '邮箱格式不正确' ?>',
+            'invalid_password': '<?= lang('invalid_password') ?: '密码需6-32位字符' ?>',
+            'invalid_username': '<?= lang('invalid_username') ?: '账号需3-16位字母或数字' ?>',
+            'username_taken': '<?= lang('username_taken') ?: '该账号已被使用，请换一个' ?>',
+            'email_required': '<?= lang('email_required') ?: '请输入邮箱' ?>',
+            'password_required': '<?= lang('password_required') ?: '请输入密码' ?>',
+            'username_required': '<?= lang('username_required') ?: '请输入游戏账号' ?>',
+            'account_not_found': '<?= lang('account_not_found') ?: '账号不存在，请检查或先注册' ?>',
+            'no_password_hash': '<?= lang('no_password_hash') ?: '该账号未设置密码，请先通过邮箱验证登录' ?>',
+            'wrong_password': '<?= lang('wrong_password') ?: '密码错误，请重新输入' ?>',
+            'code_required': '<?= lang('code_required') ?: '请输入验证码' ?>',
+            'wrong_code': '<?= lang('wrong_code') ?: '验证码错误' ?>',
+            'code_not_found': '<?= lang('code_not_found') ?: '验证码不存在或已过期' ?>',
+            'rate_limited': '<?= lang('rate_limited') ?: '验证码发送过于频繁，请稍后再试' ?>',
+            'max_attempts_exceeded': '<?= lang('max_attempts_exceeded') ?: '尝试次数过多，请重新获取验证码' ?>',
+            'email_already_bound': '<?= lang('email_already_bound') ?: '该邮箱已绑定其他账号' ?>',
         };
         var displayMsg = friendlyMsgs[msg] || msg;
         el.html('<i class="fas fa-exclamation-circle"></i> ' + displayMsg).show();
     }
 
-    // --- Redirect after successful login ---
-    function handleLoginSuccess(resp) {
-        console.log('Login response:', resp);
-        if (resp && resp.success) {
-            showError(''); // 清除任何可能残留的错误
-            if (resp.redirect) {
-                window.location.href = resp.redirect;
+    // --- Email login flow ---
+    var loginState = {
+        email: '',
+        code: '',
+        username: '',
+        password: '',
+        cooldown: 0,
+        cooldownTimer: null
+    };
+
+    function startCooldown(seconds) {
+        loginState.cooldown = seconds;
+        var btn = $('#sendEmailCodeBtn');
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> ' + seconds + 's ' + '<?= lang('resend_code') ?: '重新发送' ?>');
+        loginState.cooldownTimer = setInterval(function() {
+            loginState.cooldown--;
+            if (loginState.cooldown <= 0) {
+                clearInterval(loginState.cooldownTimer);
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '获取验证码' ?>');
             } else {
-                window.location.reload();
+                btn.html('<i class="fas fa-spinner fa-spin"></i> ' + loginState.cooldown + 's ' + '<?= lang('resend_code') ?: '重新发送' ?>');
             }
-        } else {
-            var errMsg = (resp && resp.message) ? resp.message : '<?= lang("oneclick_failed") ?: "一键登录失败，请重试" ?>';
-            showError(errMsg);
-        }
+        }, 1000);
     }
 
-    // --- Send token/phone/username/password to backend ---
-    function submitOneClick(token, phone, username, password) {
-        var data = {};
-        if (token) data.token = token;
-        if (phone) data.phone = phone;
-        if (username) data.username = username;
-        if (password) data.password = password;
+    // Send email verification code
+    $('#sendEmailCodeBtn').on('click', function() {
+        var email = $('#loginEmail').val().trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            showError('<?= lang('invalid_email') ?: '请输入正确的邮箱地址' ?>');
+            return;
+        }
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('sending') ?: '发送中...' ?>');
+        showError('');
+
+        $.ajax({
+            url: siteUrl + '/email_send.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { email: email },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    loginState.email = email;
+                    $('#emailCodeSection').slideDown(300);
+                    showError('');
+                    startCooldown(60);
+                } else {
+                    btn.prop('disabled', false);
+                    btn.html('<i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '获取验证码' ?>');
+                    showError((resp && resp.message) || '<?= lang('send_failed') ?: '发送失败，请重试' ?>');
+                }
+            },
+            error: function(xhr, status, err) {
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '获取验证码' ?>');
+                showError('<?= lang('network_error') ?: '网络错误' ?>: ' + (err || '<?= lang('unknown_error') ?: '未知错误' ?>'));
+            }
+        });
+    });
+
+    // Resend code button
+    $('#resendCodeBtn').on('click', function() {
+        if (loginState.cooldown > 0) return;
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('<?= lang('sending') ?: '发送中...' ?>');
+        $.ajax({
+            url: siteUrl + '/email_send.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { email: loginState.email },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    btn.prop('disabled', true);
+                    startCooldown(60);
+                    showError('');
+                } else {
+                    btn.prop('disabled', false);
+                    btn.text('<?= lang('resend_code') ?: '重新发送' ?>');
+                    showError((resp && resp.message) || '<?= lang('send_failed') ?: '发送失败' ?>');
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false);
+                btn.text('<?= lang('resend_code') ?: '重新发送' ?>');
+                showError('<?= lang('network_error') ?: '网络错误，请重试' ?>');
+            }
+        });
+    });
+
+    // Submit email login/registration
+    $('#loginSubmitBtn').on('click', function() {
+        var email = loginState.email;
+        var code = $('#loginCode').val().trim();
+        var username = $('#loginUsername').val().trim();
+        var password = $('#loginPassword').val();
+
+        if (!email) { showError('<?= lang('email_first') ?: '请先获取验证码' ?>'); return; }
+        if (!code || code.length < 4) { showError('<?= lang('enter_code') ?: '请输入验证码' ?>'); return; }
+        if (username && !/^[A-Za-z0-9]{3,16}$/.test(username)) { showError('<?= lang('invalid_username') ?: '账号需3-16位字母或数字' ?>'); return; }
+        if (password && (password.length < 6 || password.length > 32)) { showError('<?= lang('invalid_password') ?: '密码需6-32位字符' ?>'); return; }
+
+        var btn = $(this);
+        btn.prop('disabled', true);
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('logging_in') ?: '登录中...' ?>');
+        showError('');
 
         $.ajax({
             url: siteUrl + '/oneclick_verify.php',
             type: 'POST',
             dataType: 'json',
-            data: data,
-            success: handleLoginSuccess,
+            data: { email: email, code: code, username: username, password: password },
+            success: function(resp) {
+                if (resp && resp.success) {
+                    showError('');
+                    if (resp.redirect) {
+                        window.location.href = resp.redirect;
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    btn.prop('disabled', false);
+                    btn.html('<i class="fas fa-sign-in-alt"></i> <?= lang('login_register') ?: '登录 / 注册' ?>');
+                    showError((resp && resp.message) || '<?= lang('login_failed') ?: '登录失败，请重试' ?>');
+                }
+            },
             error: function(xhr, status, err) {
-                console.error('AJAX error:', {status: status, error: err, responseText: xhr.responseText});
-                showError('网络错误: ' + (err || '未知错误'));
+                btn.prop('disabled', false);
+                btn.html('<i class="fas fa-sign-in-alt"></i> <?= lang('login_register') ?: '登录 / 注册' ?>');
+                showError('<?= lang('network_error') ?: '网络错误' ?>: ' + (err || '<?= lang('unknown_error') ?: '未知错误' ?>'));
             }
         });
-    }
+    });
 
-    // --- Password login ---
+    // Enter key handlers for login form
+    $('#loginEmail').on('keypress', function(e) {
+        if (e.which === 13) { e.preventDefault(); $('#sendEmailCodeBtn').click(); }
+    });
+    $('#loginCode').on('keypress', function(e) {
+        if (e.which === 13) { e.preventDefault(); $('#loginSubmitBtn').click(); }
+    });
+    $('#loginUsername, #loginPassword').on('keypress', function(e) {
+        if (e.which === 13) { e.preventDefault(); $('#loginSubmitBtn').click(); }
+    });
+
+    // --- Password login (for returning users) ---
     function submitPasswordLogin(username, password, btn) {
         $.ajax({
             url: siteUrl + '/password_login.php',
@@ -751,258 +864,152 @@ $(function() {
             data: { username: username, password: password },
             success: function(resp) {
                 if (resp && resp.success) {
-                    // 成功：不恢复按钮，直接跳转
-                    handleLoginSuccess(resp);
+                    showError('');
+                    if (resp.redirect) {
+                        window.location.href = resp.redirect;
+                    } else {
+                        window.location.reload();
+                    }
                 } else {
-                    // 失败：恢复按钮并显示错误
                     btn.prop('disabled', false);
-                    btn.html('<i class="fas fa-sign-in-alt"></i> 登录');
-                    handleLoginSuccess(resp);
+                    btn.html('<i class="fas fa-sign-in-alt"></i> <?= lang('login_btn') ?: '登录' ?>');
+                    showError((resp && resp.message) || '<?= lang('login_failed') ?: '登录失败' ?>');
                 }
             },
             error: function(xhr, status, err) {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-sign-in-alt"></i> 登录');
-                console.error('AJAX error:', {status: status, error: err, responseText: xhr.responseText});
-                showError('网络错误: ' + (err || '未知错误'));
+                btn.html('<i class="fas fa-sign-in-alt"></i> <?= lang('login_btn') ?: '登录' ?>');
+                showError('<?= lang('network_error') ?: '网络错误' ?>: ' + (err || '<?= lang('unknown_error') ?: '未知错误' ?>'));
             }
         });
     }
 
-    <?php if ($isMobile): ?>
-    // --- Mobile: One-Click Login ---
-
-    <?php if ($oneclickProvider === 'aliyun' && !empty($oneclickAppKey)): ?>
-    // Production mode: Aliyun NumberAuth H5 SDK
-    var authSDK = null;
-    var oneClickBusy = false;
-
-    function initAliyunAuth() {
-        if (typeof AliyunNumberAuth === 'undefined') {
-            showError('号码认证SDK加载失败，请刷新重试');
-            return false;
-        }
-        authSDK = new AliyunNumberAuth({
-            appKey: '<?= addslashes($oneclickAppKey) ?>',
-            timeout: 8000
-        });
-        return true;
-    }
-
-    $('#oneclickBtn').on('click', function() {
-        if (oneClickBusy) return;
-        oneClickBusy = true;
-
-        var btn = $(this);
-        btn.prop('disabled', true);
-        btn.html('<span class="spinner"></span> <?= lang("oneclick_verifying") ?: "正在验证本机号码..." ?>');
-        showError('');
-
-        if (!initAliyunAuth()) {
-            oneClickBusy = false;
-            btn.prop('disabled', false);
-            btn.html('<i class="fas fa-shield-alt"></i> <?= lang("oneclick_login_btn") ?: "一键登录" ?>');
-            return;
-        }
-
-        authSDK.getToken().then(function(token) {
-            submitOneClick(token, null);
-        }).catch(function(err) {
-            oneClickBusy = false;
-            btn.prop('disabled', false);
-            btn.html('<i class="fas fa-shield-alt"></i> <?= lang("oneclick_login_btn") ?: "一键登录" ?>');
-
-            var errMsg = '<?= lang("oneclick_failed") ?: "一键登录失败" ?>';
-            if (err && err.code === 'NO_CELLULAR') {
-                errMsg = '<?= lang("oneclick_need_data") ?: "一键登录需要使用移动数据网络，请切换到手机流量后重试" ?>';
-            }
-            showError(errMsg);
-        });
-    });
-
-    <?php else: ?>
-    // Demo mode: use phone + username + password input
-    $('#demoLoginBtn').on('click', function() {
-        var phone = $('#demoPhone').val().trim();
-        var username = $('#demoUsername').val().trim();
-        var password = $('#demoPassword').val();
-
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            showError('请输入正确的手机号');
-            return;
-        }
-        if (username && !/^[A-Za-z0-9]{3,16}$/.test(username)) {
-            showError('账号需3-16位字母或数字');
-            return;
-        }
-        if (password.length < 6 || password.length > 32) {
-            showError('密码需6-32位字符');
-            return;
-        }
-
-        var btn = $(this);
-        btn.prop('disabled', true);
-        btn.html('<span class="spinner"></span> <?= lang("oneclick_verifying") ?: "正在验证..." ?>');
-        showError('');
-
-        submitOneClick(null, phone, username, password);
-    });
-
-    // Also allow Enter key on the inputs
-    $('#demoPhone, #demoUsername, #demoPassword').on('keypress', function(e) {
-        if (e.which === 13) {
-            $('#demoLoginBtn').click();
-        }
-    });
-    <?php endif; ?>
-
-    <?php endif; ?>
-
-    // --- Password Login (for returning users, works on both PC and Mobile) ---
     $('#pwdLoginBtn').on('click', function() {
         var username = $('#pwdUsername').val().trim();
         var password = $('#pwdPassword').val();
-
-        if (!username) {
-            showError('请输入游戏账号');
-            return;
-        }
-        if (!password) {
-            showError('请输入密码');
-            return;
-        }
-
+        if (!username) { showError('<?= lang('username_required') ?: '请输入游戏账号' ?>'); return; }
+        if (!password) { showError('<?= lang('password_required') ?: '请输入密码' ?>'); return; }
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.html('<span class="spinner"></span> 登录中...');
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('logging_in') ?: '登录中...' ?>');
         showError('');
-
         submitPasswordLogin(username, password, btn);
     });
 
     $('#pwdUsername, #pwdPassword').on('keypress', function(e) {
-        if (e.which === 13) {
-            $('#pwdLoginBtn').click();
-        }
+        if (e.which === 13) { e.preventDefault(); $('#pwdLoginBtn').click(); }
     });
 
-    // --- Bind phone for accounts created outside the web system ---
+    // --- Bind email for accounts ---
     var bindCodeCooldown = 0;
 
-    $('#bindPhoneBtn').on('click', function() {
-        $('#bindPhoneForm').slideToggle(200);
+    $('#bindEmailBtn').on('click', function() {
+        $('#bindEmailForm').slideToggle(200);
     });
 
     $('#bindSendCodeBtn').on('click', function() {
-        var phone = $('#bindPhoneInput').val().trim();
-        var errEl = $('#bindPhoneError');
+        var email = $('#bindEmailInput').val().trim();
+        var errEl = $('#bindEmailError');
         errEl.hide();
 
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            errEl.text('请输入正确的手机号').show();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errEl.text('<?= lang('invalid_email') ?: '请输入正确的邮箱地址' ?>').show();
             return;
         }
 
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.text('发送中...');
+        btn.text('<?= lang('sending') ?: '发送中...' ?>');
 
         $.ajax({
-            url: siteUrl + '/sms_send.php',
+            url: siteUrl + '/email_send.php',
             type: 'POST',
             dataType: 'json',
-            data: { phone: phone },
+            data: { email: email },
             success: function(resp) {
                 if (resp && resp.success) {
                     btn.prop('disabled', true);
                     bindCodeCooldown = 60;
                     var timer = setInterval(function() {
-                        btn.text(bindCodeCooldown + 's 后重试');
+                        btn.text(bindCodeCooldown + 's <?= lang('retry') ?: '后重试' ?>');
                         bindCodeCooldown--;
                         if (bindCodeCooldown < 0) {
                             clearInterval(timer);
                             btn.prop('disabled', false);
-                            btn.text('获取验证码');
+                            btn.text('<?= lang('get_code') ?: '获取验证码' ?>');
                         }
                     }, 1000);
-
-                    // Demo mode: auto-fill code if provided
-                    if (resp.code && provider === 'demo') {
-                        $('#bindCodeInput').val(resp.code);
-                        console.log('[Bind Phone] Demo code:', resp.code);
-                    }
                 } else {
                     btn.prop('disabled', false);
-                    btn.text('获取验证码');
-                    errEl.text(resp.message || '验证码发送失败').show();
+                    btn.text('<?= lang('get_code') ?: '获取验证码' ?>');
+                    errEl.text(resp.message || '<?= lang('send_failed') ?: '验证码发送失败' ?>').show();
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.text('获取验证码');
-                errEl.text('网络错误，请重试').show();
+                btn.text('<?= lang('get_code') ?: '获取验证码' ?>');
+                errEl.text('<?= lang('network_error') ?: '网络错误，请重试' ?>').show();
             }
         });
     });
 
-    $('#bindSubmitBtn').on('click', function() {
-        var phone = $('#bindPhoneInput').val().trim();
-        var code = $('#bindCodeInput').val().trim();
-        var errEl = $('#bindPhoneError');
+    $('#bindEmailSubmitBtn').on('click', function() {
+        var email = $('#bindEmailInput').val().trim();
+        var code = $('#bindEmailCodeInput').val().trim();
+        var errEl = $('#bindEmailError');
         errEl.hide();
 
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            errEl.text('请输入正确的手机号').show();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errEl.text('<?= lang('invalid_email') ?: '请输入正确的邮箱地址' ?>').show();
             return;
         }
         if (!code || code.length < 4) {
-            errEl.text('请输入验证码').show();
+            errEl.text('<?= lang('enter_code') ?: '请输入验证码' ?>').show();
             return;
         }
 
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.html('<span class="spinner"></span> 绑定中...');
+        btn.html('<span class="spinner"></span> <?= lang('binding') ?: '绑定中...' ?>');
 
         $.ajax({
-            url: siteUrl + '/bind_phone.php',
+            url: siteUrl + '/bind_email.php',
             type: 'POST',
             dataType: 'json',
-            data: { phone: phone, code: code },
+            data: { email: email, code: code },
             success: function(resp) {
                 if (resp && resp.success) {
-                    errEl.css('color', '#28a745').text('手机号绑定成功！').show();
+                    errEl.css('color', '#28a745').text('<?= lang('bind_success') ?: '邮箱绑定成功！' ?>').show();
                     setTimeout(function() {
                         window.location.reload();
                     }, 1000);
                 } else {
                     btn.prop('disabled', false);
-                    btn.html('<i class="fas fa-check"></i> 确认绑定');
+                    btn.html('<i class="fas fa-check"></i> <?= lang('confirm_bind') ?: '确认绑定' ?>');
                     var msgMap = {
-                        'wrong_code': '验证码错误',
-                        'code_not_found': '验证码不存在或已过期',
-                        'max_attempts_exceeded': '尝试次数过多，请重新获取验证码',
-                        'phone_already_bound': '该手机号已绑定其他账号',
-                        'account_not_found': '账号不存在',
-                        'not_logged_in': '请先登录'
+                        'wrong_code': '<?= lang('wrong_code') ?: '验证码错误' ?>',
+                        'code_not_found': '<?= lang('code_not_found') ?: '验证码不存在或已过期' ?>',
+                        'max_attempts_exceeded': '<?= lang('max_attempts_exceeded') ?: '尝试次数过多，请重新获取验证码' ?>',
+                        'email_already_bound': '<?= lang('email_already_bound') ?: '该邮箱已绑定其他账号' ?>',
+                        'account_not_found': '<?= lang('account_not_found') ?: '账号不存在' ?>',
+                        'not_logged_in': '<?= lang('not_logged_in') ?: '请先登录' ?>'
                     };
-                    var msg = msgMap[resp.message] || resp.message || '绑定失败';
+                    var msg = msgMap[resp.message] || resp.message || '<?= lang('bind_failed') ?: '绑定失败' ?>';
                     errEl.css('color', '#dc3545').text(msg).show();
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-check"></i> 确认绑定');
-                errEl.css('color', '#dc3545').text('网络错误，请重试').show();
+                btn.html('<i class="fas fa-check"></i> <?= lang('confirm_bind') ?: '确认绑定' ?>');
+                errEl.css('color', '#dc3545').text('<?= lang('network_error') ?: '网络错误，请重试' ?>').show();
             }
         });
     });
 
     // ===== Password Reset Modal =====
     var resetState = {
-        phone: '',
+        email: '',
         username: '',
-        demoCode: '',
         countdownTimer: null,
         countdownValue: 0
     };
@@ -1011,38 +1018,38 @@ $(function() {
         var modal = document.getElementById('resetPasswordModal');
         if (!modal) return;
 
-        resetState = { phone: '', username: '', demoCode: '', countdownTimer: null, countdownValue: 0 };
+        resetState = { email: '', username: '', countdownTimer: null, countdownValue: 0 };
         document.getElementById('resetModalMsg').style.display = 'none';
 
         var isLoggedIn = <?= $mbLoggedIn ? 'true' : 'false' ?>;
-        var sessionPhone = '<?= addslashes($_SESSION['mobile_phone'] ?? '') ?>';
-        var autoMode = isLoggedIn && sessionPhone;
+        var sessionEmail = '<?= addslashes($_SESSION['user_email'] ?? '') ?>';
+        var autoMode = isLoggedIn && sessionEmail;
 
         if (autoMode) {
-            resetState.phone = sessionPhone;
-            document.getElementById('resetAutoPhoneBox').style.display = 'block';
+            resetState.email = sessionEmail;
+            document.getElementById('resetAutoEmailBox').style.display = 'block';
             document.getElementById('resetManualBox').style.display = 'none';
 
             $.ajax({
                 url: siteUrl + '/reset_password.php',
                 type: 'POST',
                 dataType: 'json',
-                data: { ajax_action: 'send_code', phone: sessionPhone },
+                data: { ajax_action: 'send_code', email: sessionEmail },
                 success: function(resp) {
                     if (resp && resp.success) {
-                        document.getElementById('resetMaskedPhone').textContent = resp.masked_phone || sessionPhone;
+                        document.getElementById('resetMaskedEmail').textContent = resp.masked_email || EmailAuthMaskClient(sessionEmail);
                         document.getElementById('resetAccountName').textContent = resp.username || '';
                         resetState.username = resp.username || '';
                     } else {
-                        document.getElementById('resetMaskedPhone').textContent = maskPhoneClient(sessionPhone);
+                        document.getElementById('resetMaskedEmail').textContent = EmailAuthMaskClient(sessionEmail);
                     }
                 },
                 error: function() {
-                    document.getElementById('resetMaskedPhone').textContent = maskPhoneClient(sessionPhone);
+                    document.getElementById('resetMaskedEmail').textContent = EmailAuthMaskClient(sessionEmail);
                 }
             });
         } else {
-            document.getElementById('resetAutoPhoneBox').style.display = 'none';
+            document.getElementById('resetAutoEmailBox').style.display = 'none';
             document.getElementById('resetManualBox').style.display = 'block';
         }
 
@@ -1059,9 +1066,18 @@ $(function() {
         }
     };
 
-    function maskPhoneClient(phone) {
-        if (!phone || phone.length < 11) return phone;
-        return phone.substr(0, 3) + '****' + phone.substr(7);
+    function EmailAuthMaskClient(email) {
+        if (!email || email.indexOf('@') === -1) return email;
+        var parts = email.split('@');
+        var local = parts[0];
+        if (local.length <= 2) {
+            parts[0] = local.charAt(0) + new Array(local.length).join('*');
+        } else if (local.length <= 4) {
+            parts[0] = local.charAt(0) + new Array(local.length).join('*');
+        } else {
+            parts[0] = local.substring(0, 2) + new Array(local.length - 1).join('*');
+        }
+        return parts.join('@');
     }
 
     function showResetStep(step) {
@@ -1094,69 +1110,64 @@ $(function() {
 
     $('#resetSendCodeBtn').on('click', function() {
         var btn = $(this);
-        var phone = resetState.phone;
-        if (!phone) phone = $('#resetPhoneInput').val().trim();
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            showResetMsg('error', '请输入正确的手机号');
+        var email = resetState.email;
+        if (!email) email = $('#resetEmailInput').val().trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            showResetMsg('error', '<?= lang('invalid_email') ?: '请输入正确的邮箱' ?>');
             return;
         }
         btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin"></i> 发送中...');
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('sending') ?: '发送中...' ?>');
         $.ajax({
             url: siteUrl + '/reset_password.php',
             type: 'POST', dataType: 'json',
-            data: { ajax_action: 'send_code', phone: phone },
+            data: { ajax_action: 'send_code', email: email },
             success: function(resp) {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-paper-plane"></i> 发送验证码');
+                btn.html('<i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '发送验证码' ?>');
                 if (resp && resp.success) {
-                    resetState.phone = resp.phone || phone;
+                    resetState.email = resp.email || email;
                     resetState.username = resp.username || resetState.username;
-                    resetState.demoCode = resp.code || '';
-                    if (resetState.demoCode) {
-                        $('#resetDemoCodeValue').text(resetState.demoCode);
-                        $('#resetDemoCodeBox').show();
-                    }
-                    $('#resetPhoneDisplay').text(resp.masked_phone || maskPhoneClient(phone));
+                    $('#resetEmailDisplay').text(resp.masked_email || EmailAuthMaskClient(email));
                     showResetStep(2);
-                    showResetMsg('success', '验证码已发送');
+                    showResetMsg('success', '<?= lang('code_sent') ?: '验证码已发送' ?>');
                     startResetCountdown(60);
                 } else {
-                    showResetMsg('error', (resp && resp.message) || '发送失败');
+                    showResetMsg('error', (resp && resp.message) || '<?= lang('send_failed') ?: '发送失败' ?>');
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-paper-plane"></i> 发送验证码');
-                showResetMsg('error', '网络错误，请重试');
+                btn.html('<i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '发送验证码' ?>');
+                showResetMsg('error', '<?= lang('network_error') ?: '网络错误，请重试' ?>');
             }
         });
     });
 
     $('#resetVerifyBtn').on('click', function() {
         var code = $('#resetCodeInput').val().trim();
-        if (!code) { showResetMsg('error', '请输入验证码'); return; }
+        if (!code) { showResetMsg('error', '<?= lang('enter_code') ?: '请输入验证码' ?>'); return; }
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin"></i> 验证中...');
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('verifying') ?: '验证中...' ?>');
         $.ajax({
             url: siteUrl + '/reset_password.php',
             type: 'POST', dataType: 'json',
-            data: { ajax_action: 'verify_code', phone: resetState.phone, code: code },
+            data: { ajax_action: 'verify_code', email: resetState.email, code: code },
             success: function(resp) {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-check"></i> 验证');
+                btn.html('<i class="fas fa-check"></i> <?= lang('verify') ?: '验证' ?>');
                 if (resp && resp.success) {
                     resetState.username = resp.username || resetState.username;
                     showResetStep(3);
                 } else {
-                    showResetMsg('error', (resp && resp.message) || '验证失败');
+                    showResetMsg('error', (resp && resp.message) || '<?= lang('verify_failed') ?: '验证失败' ?>');
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-check"></i> 验证');
-                showResetMsg('error', '网络错误，请重试');
+                btn.html('<i class="fas fa-check"></i> <?= lang('verify') ?: '验证' ?>');
+                showResetMsg('error', '<?= lang('network_error') ?: '网络错误，请重试' ?>');
             }
         });
     });
@@ -1165,32 +1176,27 @@ $(function() {
         if (resetState.countdownValue > 0) return;
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.text('发送中...');
+        btn.text('<?= lang('sending') ?: '发送中...' ?>');
         $.ajax({
             url: siteUrl + '/reset_password.php',
             type: 'POST', dataType: 'json',
-            data: { ajax_action: 'send_code', phone: resetState.phone },
+            data: { ajax_action: 'send_code', email: resetState.email },
             success: function(resp) {
                 if (resp && resp.success) {
-                    resetState.demoCode = resp.code || '';
-                    if (resetState.demoCode) {
-                        $('#resetDemoCodeValue').text(resetState.demoCode);
-                        $('#resetDemoCodeBox').show();
-                    }
                     btn.prop('disabled', false);
-                    btn.text('没收到？重新发送');
+                    btn.text('<?= lang('resend_code') ?: '没收到？重新发送' ?>');
                     startResetCountdown(60);
-                    showResetMsg('success', '验证码已重新发送');
+                    showResetMsg('success', '<?= lang('code_resent') ?: '验证码已重新发送' ?>');
                 } else {
                     btn.prop('disabled', false);
-                    btn.text('没收到？重新发送');
-                    showResetMsg('error', (resp && resp.message) || '发送失败');
+                    btn.text('<?= lang('resend_code') ?: '没收到？重新发送' ?>');
+                    showResetMsg('error', (resp && resp.message) || '<?= lang('send_failed') ?: '发送失败' ?>');
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.text('没收到？重新发送');
-                showResetMsg('error', '网络错误，请重试');
+                btn.text('<?= lang('resend_code') ?: '没收到？重新发送' ?>');
+                showResetMsg('error', '<?= lang('network_error') ?: '网络错误，请重试' ?>');
             }
         });
     });
@@ -1206,10 +1212,10 @@ $(function() {
                 resetState.countdownTimer = null;
                 resetState.countdownValue = 0;
                 btn.disabled = false;
-                btn.textContent = '没收到？重新发送';
+                btn.textContent = '<?= lang('resend_code') ?: '没收到？重新发送' ?>';
                 return;
             }
-            btn.textContent = '重新发送（' + resetState.countdownValue + 's）';
+            btn.textContent = '<?= lang('resend_code') ?: '重新发送' ?>（' + resetState.countdownValue + 's）';
             resetState.countdownValue--;
         }, 1000);
     }
@@ -1218,40 +1224,40 @@ $(function() {
         var newPwd = $('#resetNewPwd').val();
         var confirmPwd = $('#resetConfirmPwd').val();
         if (newPwd.length < 6 || newPwd.length > 32) {
-            showResetMsg('error', '密码需6-32位字符');
+            showResetMsg('error', '<?= lang('invalid_password') ?: '密码需6-32位字符' ?>');
             return;
         }
         if (newPwd !== confirmPwd) {
-            showResetMsg('error', '两次输入的密码不一致');
+            showResetMsg('error', '<?= lang('password_mismatch') ?: '两次输入的密码不一致' ?>');
             return;
         }
         var btn = $(this);
         btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin"></i> 重置中...');
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('resetting') ?: '重置中...' ?>');
         $.ajax({
             url: siteUrl + '/reset_password.php',
             type: 'POST', dataType: 'json',
             data: {
                 ajax_action: 'set_password',
-                phone: resetState.phone,
+                email: resetState.email,
                 new_password: newPwd,
                 confirm_password: confirmPwd
             },
             success: function(resp) {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-check"></i> 确认重置密码');
+                btn.html('<i class="fas fa-check"></i> <?= lang('confirm_reset_password') ?: '确认重置密码' ?>');
                 if (resp && resp.success) {
                     resetState.username = resp.username || resetState.username;
                     $('#resetSuccessAccount').text(resetState.username);
                     showResetStep(4);
                 } else {
-                    showResetMsg('error', (resp && resp.message) || '重置失败');
+                    showResetMsg('error', (resp && resp.message) || '<?= lang('reset_failed') ?: '重置失败' ?>');
                 }
             },
             error: function() {
                 btn.prop('disabled', false);
-                btn.html('<i class="fas fa-check"></i> 确认重置密码');
-                showResetMsg('error', '网络错误，请重试');
+                btn.html('<i class="fas fa-check"></i> <?= lang('confirm_reset_password') ?: '确认重置密码' ?>');
+                showResetMsg('error', '<?= lang('network_error') ?: '网络错误，请重试' ?>');
             }
         });
     });
@@ -1283,17 +1289,11 @@ $(function() {
     $(document).on('keydown', '#resetCodeInput', function(e) {
         if (e.which === 13) { e.preventDefault(); $('#resetVerifyBtn').click(); }
     });
-    $(document).on('keydown', '#resetPhoneInput', function(e) {
+    $(document).on('keydown', '#resetEmailInput', function(e) {
         if (e.which === 13) { e.preventDefault(); $('#resetSendCodeBtn').click(); }
     });
 
-    $(document).on('click', '#resetPasswordModal', function(e) {
-        if (e.target === this) closeResetPasswordModal();
-    });
-
     // ===== Bot / Idle Feature =====
-    var botState = {};
-
     $('.btn-bot-action').on('click', function() {
         var btn = $(this);
         var character = btn.data('character');
@@ -1319,18 +1319,13 @@ $(function() {
             botLog.scrollTop(botLog[0].scrollHeight);
         }
 
-        logMsg('[' + new Date().toLocaleTimeString() + '] 正在启动挂机模式...');
+        logMsg('[' + new Date().toLocaleTimeString() + '] <?= lang('bot_starting') ?: '正在启动挂机模式' ?>...');
         statusIcon.css('background', '#f39c12');
-        statusTitle.text('挂机中');
-        statusMsg.text('正在连接游戏服务器...');
+        statusTitle.text('<?= lang('bot_idle_status') ?: '挂机中' ?>');
+        statusMsg.text('<?= lang('bot_connecting') ?: '正在连接游戏服务器' ?>...');
 
-        // Disable button and change text
         btn.prop('disabled', true);
-        btn.html('<i class="fas fa-spinner fa-spin"></i> 挂机中');
-
-        // Track bot state
-        var botId = account + '_' + character;
-        botState[botId] = { status: 'starting' };
+        btn.html('<i class="fas fa-spinner fa-spin"></i> <?= lang('bot_idle') ?: '挂机中' ?>');
 
         $.ajax({
             url: siteUrl + '/bot_start.php',
@@ -1340,34 +1335,29 @@ $(function() {
             timeout: 30000,
             success: function(resp) {
                 if (resp && resp.success) {
-                    logMsg('[' + new Date().toLocaleTimeString() + '] ✓ ' + (resp.message || '角色已登录，Bot模式已启动'));
+                    logMsg('[' + new Date().toLocaleTimeString() + '] ✓ ' + (resp.message || '<?= lang('bot_started') ?: '角色已登录，Bot模式已启动' ?>'));
                     statusIcon.css('background', '#28a745');
-                    statusTitle.text('挂机运行中');
-                    statusMsg.text('角色"' + character + '" 正在挂机中');
-                    botState[botId].status = 'running';
+                    statusTitle.text('<?= lang('bot_running') ?: '挂机运行中' ?>');
+                    statusMsg.text('<?= lang('bot_character_idle') ?: '角色' ?>"' + character + '" <?= lang('bot_is_idle') ?: '正在挂机中' ?>');
 
                     if (resp.logs && Array.isArray(resp.logs)) {
-                        resp.logs.forEach(function(l) {
-                            logMsg(l);
-                        });
+                        resp.logs.forEach(function(l) { logMsg(l); });
                     }
                 } else {
-                    var errMsg = (resp && resp.message) || '启动失败，请重试';
+                    var errMsg = (resp && resp.message) || '<?= lang('bot_start_failed') ?: '启动失败，请重试' ?>';
                     logMsg('[' + new Date().toLocaleTimeString() + '] ✗ ' + errMsg, '#ff6b6b');
                     statusIcon.css('background', '#e74c3c');
-                    statusTitle.text('挂机失败');
+                    statusTitle.text('<?= lang('bot_failed') ?: '挂机失败' ?>');
                     statusMsg.text(errMsg);
-                    botState[botId].status = 'error';
                     btn.prop('disabled', false);
                     btn.html('<i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>');
                 }
             },
             error: function(xhr, status, err) {
-                logMsg('[' + new Date().toLocaleTimeString() + '] ✗ 网络错误: ' + (err || '未知错误'), '#ff6b6b');
+                logMsg('[' + new Date().toLocaleTimeString() + '] ✗ <?= lang('network_error') ?: '网络错误' ?>: ' + (err || '<?= lang('unknown_error') ?: '未知错误' ?>'), '#ff6b6b');
                 statusIcon.css('background', '#e74c3c');
-                statusTitle.text('挂机失败');
-                statusMsg.text('连接服务器失败，请重试');
-                botState[botId].status = 'error';
+                statusTitle.text('<?= lang('bot_failed') ?: '挂机失败' ?>');
+                statusMsg.text('<?= lang('server_connect_failed') ?: '连接服务器失败，请重试' ?>');
                 btn.prop('disabled', false);
                 btn.html('<i class="fas fa-robot"></i> <?= lang('go_idle') ?: '挂机' ?>');
             }
@@ -1375,10 +1365,8 @@ $(function() {
     }
 
     $('#stopBotBtn').on('click', function() {
-        var panel = $('#botStatusPanel');
-        var botLog = $('#botLog');
-        panel.hide();
-        botLog.hide();
+        $('#botStatusPanel').hide();
+        $('#botLog').hide();
         $(this).hide();
         $('.btn-bot-action').each(function() {
             $(this).prop('disabled', false);
@@ -1389,13 +1377,13 @@ $(function() {
 });
 </script>
 
-<!-- ===== Password Reset Modal ===== -->
+<!-- ===== Password Reset Modal (Email-based) ===== -->
 <div class="modal-overlay" id="resetPasswordModal" style="z-index: 10000;">
     <div class="modal-content" style="max-width: 440px; width: 92%;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
             <h4 style="margin: 0; font-weight: 600;">
                 <i class="fas fa-key" style="color: var(--brand-blue);"></i>
-                重置密码
+                <?= lang('forgot_password') ?: '忘记密码' ?>
             </h4>
             <button type="button" onclick="closeResetPasswordModal()"
                     style="border: none; background: transparent; font-size: 22px; color: #999; cursor: pointer;">
@@ -1403,55 +1391,51 @@ $(function() {
             </button>
         </div>
 
-        <!-- Step 1: Send code -->
+        <!-- Step 1: Send code to email -->
         <div id="resetStep1">
-            <div id="resetAutoPhoneBox" style="display: none; background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 10px; padding: 16px; margin-bottom: 16px; text-align: center;">
-                <div style="font-size: 22px; font-weight: 700; color: var(--brand-blue); letter-spacing: 2px;" id="resetMaskedPhone"></div>
-                <div style="font-size: 13px; color: #888; margin-top: 6px;">验证码将发送至以上手机号</div>
-                <div style="font-size: 13px; color: #666; margin-top: 4px;">账号：<strong id="resetAccountName"></strong></div>
+            <div id="resetAutoEmailBox" style="display: none; background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 10px; padding: 16px; margin-bottom: 16px; text-align: center;">
+                <div style="font-size: 18px; font-weight: 700; color: var(--brand-blue); word-break: break-all;" id="resetMaskedEmail"></div>
+                <div style="font-size: 13px; color: #888; margin-top: 6px;"><?= lang('code_sent_to_email') ?: '验证码将发送至以上邮箱' ?></div>
+                <div style="font-size: 13px; color: #666; margin-top: 4px;"><?= lang('account') ?: '账号' ?>：<strong id="resetAccountName"></strong></div>
             </div>
 
             <div id="resetManualBox">
                 <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-phone"></i> 手机号</label>
-                    <input type="tel" id="resetPhoneInput" class="form-control"
-                           placeholder="请输入账号绑定的手机号" maxlength="11"
-                           pattern="1[3-9]\d{9}" style="border-radius: 8px;">
+                    <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-envelope"></i> <?= lang('email') ?: '邮箱' ?></label>
+                    <input type="email" id="resetEmailInput" class="form-control"
+                           placeholder="<?= lang('enter_bound_email') ?: '请输入账号绑定的邮箱' ?>"
+                           autocomplete="email"
+                           style="border-radius: 8px;">
                 </div>
                 <div style="font-size: 12px; color: #888; margin-bottom: 14px;">
-                    <i class="fas fa-info-circle"></i> 该手机号必须已绑定游戏账号
+                    <i class="fas fa-info-circle"></i> <?= lang('email_must_bound') ?: '该邮箱必须已绑定游戏账号' ?>
                 </div>
             </div>
 
-            <div id="resetDemoCodeBox" style="display: none; background: #fff7e6; border: 1px solid #ffd591; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 14px; font-size: 14px; color: #d4880c;">
-                <i class="fas fa-info-circle"></i> 演示模式验证码：
-                <code id="resetDemoCodeValue" style="font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--brand-blue);"></code>
-            </div>
-
-            <button type="button" id="resetSendCodeBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
-                <i class="fas fa-paper-plane"></i> 发送验证码
+            <button type="button" id="resetSendCodeBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px; background: var(--brand-blue); color: #fff; border: none;">
+                <i class="fas fa-paper-plane"></i> <?= lang('send_code') ?: '发送验证码' ?>
             </button>
         </div>
 
         <!-- Step 2: Verify code -->
         <div id="resetStep2" style="display: none;">
             <div style="text-align: center; color: #888; margin-bottom: 12px; font-size: 14px;">
-                验证码已发送至
-                <strong id="resetPhoneDisplay" style="color: var(--brand-blue);"></strong>
+                <?= lang('code_sent_to') ?: '验证码已发送至' ?>
+                <strong id="resetEmailDisplay" style="color: var(--brand-blue);"></strong>
             </div>
             <div class="form-group" style="margin-bottom: 14px;">
-                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-shield-alt"></i> 短信验证码</label>
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-shield-alt"></i> <?= lang('email_code') ?: '邮箱验证码' ?></label>
                 <input type="text" id="resetCodeInput" class="form-control"
-                       placeholder="请输入6位验证码" maxlength="6" pattern="\d{6}"
+                       placeholder="<?= lang('enter_6digit_code') ?: '请输入6位验证码' ?>" maxlength="6" pattern="\d{6}"
                        autocomplete="one-time-code"
                        style="text-align: center; font-size: 20px; letter-spacing: 5px; border-radius: 8px;">
             </div>
-            <button type="button" id="resetVerifyBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
-                <i class="fas fa-check"></i> 验证
+            <button type="button" id="resetVerifyBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px; background: var(--brand-blue); color: #fff; border: none;">
+                <i class="fas fa-check"></i> <?= lang('verify') ?: '验证' ?>
             </button>
             <div style="text-align: center; margin-top: 10px;">
                 <button type="button" id="resetResendBtn" style="border: none; background: transparent; color: #666; font-size: 13px; cursor: pointer; text-decoration: underline;">
-                    没收到？重新发送
+                    <?= lang('resend_code') ?: '没收到？重新发送' ?>
                 </button>
             </div>
         </div>
@@ -1459,15 +1443,15 @@ $(function() {
         <!-- Step 3: Set new password -->
         <div id="resetStep3" style="display: none;">
             <div style="background: #f0f5ff; border: 1px solid #adc6ff; border-radius: 10px; padding: 12px; margin-bottom: 16px; text-align: center;">
-                <div style="font-size: 13px; color: #888;">游戏账号</div>
+                <div style="font-size: 13px; color: #888;"><?= lang('account') ?: '游戏账号' ?></div>
                 <div style="font-weight: 700; color: #333; font-size: 18px;" id="resetAccountDisplay"></div>
             </div>
-            <p style="text-align: center; color: #888; font-size: 14px; margin-bottom: 16px;">手机验证通过，请设置新密码</p>
+            <p style="text-align: center; color: #888; font-size: 14px; margin-bottom: 16px;"><?= lang('email_verified_set_password') ?: '邮箱验证通过，请设置新密码' ?></p>
             <div class="form-group" style="margin-bottom: 12px;">
-                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> 新密码（6-32位）</label>
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> <?= lang('new_password') ?: '新密码' ?>（6-32位）</label>
                 <div style="position: relative;">
                     <input type="password" id="resetNewPwd" class="form-control"
-                           placeholder="请输入新密码" minlength="6" maxlength="32" required
+                           placeholder="<?= lang('enter_new_password') ?: '请输入新密码' ?>" minlength="6" maxlength="32" required
                            autocomplete="new-password"
                            style="border-radius: 8px; padding-right: 40px;">
                     <button type="button" onclick="toggleResetPwd('resetNewPwd', this)"
@@ -1479,10 +1463,10 @@ $(function() {
                 <div class="strength-text" id="resetStrengthText" style="font-size: 12px; color: #999;"></div>
             </div>
             <div class="form-group" style="margin-bottom: 16px;">
-                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> 确认新密码</label>
+                <label style="font-weight: 600; font-size: 14px;"><i class="fas fa-lock"></i> <?= lang('confirm_password') ?: '确认新密码' ?></label>
                 <div style="position: relative;">
                     <input type="password" id="resetConfirmPwd" class="form-control"
-                           placeholder="请再次输入新密码" minlength="6" maxlength="32" required
+                           placeholder="<?= lang('reenter_password') ?: '请再次输入新密码' ?>" minlength="6" maxlength="32" required
                            autocomplete="new-password"
                            style="border-radius: 8px; padding-right: 40px;">
                     <button type="button" onclick="toggleResetPwd('resetConfirmPwd', this)"
@@ -1491,8 +1475,8 @@ $(function() {
                     </button>
                 </div>
             </div>
-            <button type="button" id="resetSetPwdBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px;">
-                <i class="fas fa-check"></i> 确认重置密码
+            <button type="button" id="resetSetPwdBtn" class="btn btn-brand btn-block" style="border-radius: 8px; padding: 12px; font-size: 15px; background: var(--brand-blue); color: #fff; border: none;">
+                <i class="fas fa-check"></i> <?= lang('confirm_reset_password') ?: '确认重置密码' ?>
             </button>
         </div>
 
@@ -1501,13 +1485,12 @@ $(function() {
             <div style="font-size: 56px; color: #22c55e; margin-bottom: 16px;">
                 <i class="fas fa-check-circle"></i>
             </div>
-            <h4 style="color: #22c55e; margin-bottom: 12px; font-weight: 600;">密码重置成功！</h4>
+            <h4 style="color: #22c55e; margin-bottom: 12px; font-weight: 600;"><?= lang('password_reset_success') ?: '密码重置成功！' ?></h4>
             <p style="color: #888; margin-bottom: 20px; font-size: 14px;">
-                账号 <strong id="resetSuccessAccount"></strong> 的密码已重置<br>
-                请使用新密码登录游戏客户端
+                <?= lang('account') ?: '账号' ?> <strong id="resetSuccessAccount"></strong> <?= lang('password_reset_done') ?: '的密码已重置<br>请使用新密码登录游戏客户端' ?>
             </p>
-            <button type="button" onclick="closeResetPasswordModal()" class="btn btn-brand" style="border-radius: 8px; padding: 10px 40px;">
-                好的
+            <button type="button" onclick="closeResetPasswordModal()" class="btn btn-brand" style="border-radius: 8px; padding: 10px 40px; background: var(--brand-blue); color: #fff; border: none;">
+                <?= lang('ok') ?: '好的' ?>
             </button>
         </div>
 

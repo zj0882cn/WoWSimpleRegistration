@@ -3,13 +3,14 @@
  * Password Login Endpoint
  *
  * Allows returning users to log in with username + password.
- * Registration still requires phone verification (one-click or SMS).
+ * Password is verified via SOAP (account set password trick — no local storage).
+ * Registration requires email verification.
  *
  * Request:  POST { username: "xxx", password: "xxx" }
  * Response: JSON { success: bool, message: string, redirect?: string }
  *
  * @author AzerothCore Community
- **/
+ */
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -17,18 +18,21 @@ session_start();
 require_once __DIR__ . '/application/config/config.php';
 require_once __DIR__ . '/application/include/core_handler.php';
 require_once __DIR__ . '/application/include/functions.php';
-require_once __DIR__ . '/application/include/mobile.php';
+require_once __DIR__ . '/application/include/email.php';
 
-// Only accept POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'method_not_allowed']);
     exit;
 }
 
-// Check if mobile auth is enabled
-if (!get_config('mobile_enabled')) {
-    echo json_encode(['success' => false, 'message' => 'mobile_auth_disabled']);
+if (!EmailAuth::isEnabled()) {
+    echo json_encode(['success' => false, 'message' => 'email_auth_disabled']);
+    exit;
+}
+
+if (!EmailAuth::isFeatureEnabled('password_login')) {
+    echo json_encode(['success' => false, 'message' => 'password_login_disabled']);
     exit;
 }
 
@@ -45,52 +49,45 @@ if (empty($password)) {
     exit;
 }
 
-// Check if account exists via SOAP
-if (!MobileAuth::accountExists(strtoupper($username))) {
+$username = strtoupper($username);
+
+// Step 1: Verify account exists on the game server
+if (!EmailAuth::accountExists($username)) {
     echo json_encode(['success' => false, 'message' => 'account_not_found']);
     exit;
 }
 
-// Verify password against stored hash
-$pwVerify = MobileAuth::verifyPasswordHash($username, $password);
-$binding = MobileAuth::getBindingByUsername($username);
+// Step 2: Verify password via SOAP (no local password storage)
+// Trick: account set password USER PASSWORD PASSWORD succeeds only if PASSWORD matches
+$pwCommand = "account set password {$username} {$password} {$password}";
+$pwResult = EmailAuth::soapCommand($pwCommand);
 
-if (!$pwVerify['has_hash']) {
-    // Account exists on game server (verified above) but no password hash stored locally.
-    // This can happen when:
-    //   1. User registered via Aliyun one-click (no password input required)
-    //   2. Account was created outside the web system (GM tool, DB direct, etc.)
-    //   3. mobile_bindings.json was reset during deployment
-    // Solution: trust the password input (account exists on SOAP), save the hash for future logins.
-    if ($binding) {
-        // Binding exists but no password_hash — save it now, preserving the phone
-        MobileAuth::updatePasswordHash($username, $password);
-    } else {
-        // No binding at all — create one with the password and empty phone
-        // (user can later bind phone via one-click login)
-        MobileAuth::saveBinding('', $username, $password);
+if (!$pwResult['success']) {
+    $msg = strtolower($pwResult['message'] ?? '');
+    // Check for wrong password errors
+    if (strpos($msg, 'password') !== false &&
+        (strpos($msg, 'wrong') !== false || strpos($msg, 'incorrect') !== false || strpos($msg, 'invalid') !== false)) {
+        echo json_encode(['success' => false, 'message' => 'wrong_password']);
+        exit;
     }
-} elseif (!$pwVerify['verified']) {
-    echo json_encode(['success' => false, 'message' => 'wrong_password']);
+    echo json_encode(['success' => false, 'message' => 'server_connection_error']);
     exit;
 }
 
-// Refresh binding after potential update
-$binding = MobileAuth::getBindingByUsername($username);
+// Password verified successfully via SOAP
+// Step 3: Set session
+$_SESSION['user_logged_in'] = true;
+$_SESSION['user_username']  = $username;
 
-// Set session — the user is now logged in on the website
-$_SESSION['mobile_logged_in'] = true;
-$_SESSION['mobile_username']  = strtoupper($username);
-$_SESSION['mobile_phone']     = '';
-
-// Use phone from binding if available
-if ($binding && !empty($binding['phone'])) {
-    $_SESSION['mobile_phone'] = $binding['phone'];
+// Get email binding if available (for account management features)
+$binding = EmailAuth::getBindingByUsername($username);
+if ($binding && !empty($binding['email'])) {
+    $_SESSION['user_email'] = $binding['email'];
 }
 
 echo json_encode([
     'success'  => true,
     'message'  => 'login_success',
-    'username' => strtoupper($username),
-    'redirect' => get_config('baseurl') . '?mobile_login=success',
+    'username' => $username,
+    'redirect' => get_config('baseurl') . '?login=success',
 ]);

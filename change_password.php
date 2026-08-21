@@ -13,7 +13,7 @@ session_start();
 require_once __DIR__ . '/application/config/config.php';
 require_once __DIR__ . '/application/include/core_handler.php';
 require_once __DIR__ . '/application/include/functions.php';
-require_once __DIR__ . '/application/include/mobile.php';
+require_once __DIR__ . '/application/include/email.php';
 
 // Load language file
 if (!empty($_COOKIE['website_lang'])) {
@@ -31,12 +31,12 @@ if (file_exists($langFile)) {
 }
 
 // Must be logged in
-if (!MobileAuth::isLoggedIn()) {
+if (!EmailAuth::isLoggedIn()) {
     header('Location: ' . get_config('baseurl'));
     exit;
 }
 
-$mbUser    = MobileAuth::getCurrentUser();
+$mbUser    = EmailAuth::getCurrentUser();
 $errorMsg  = '';
 $successMsg = '';
 $showResult = false;
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirm_change'])) {
     } elseif ($oldPass === $newPass) {
         $errorMsg = '新密码不能与旧密码相同';
     } else {
-        $result = MobileAuth::changeMyPassword($oldPass, $newPass);
+        $result = EmailAuth::changeMyPassword($oldPass, $newPass);
         if ($result['success']) {
             $successMsg = '密码修改成功！';
             $showResult = true;

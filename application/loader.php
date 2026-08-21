@@ -33,7 +33,10 @@ require_once app_path . 'config/config.php';
 require_once app_path . 'include/core_handler.php';
 require_once app_path . 'include/functions.php';
 
-// Load Mobile (SMS) authentication module
+// Load Email authentication module (primary auth)
+require_once app_path . 'include/email.php';
+
+// Load Mobile (SMS) authentication module (legacy, kept for compatibility)
 require_once app_path . 'include/mobile.php';
 
 // Load user class (password reset only — no register, no changepass)

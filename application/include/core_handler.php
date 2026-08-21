@@ -64,10 +64,10 @@ function get_core_config($key)
  * @param string $key
  * @return string
  */
-function lang($key)
+function lang($key, $default = null)
 {
     global $language;
-    return $language[$key] ?? $key;
+    return $language[$key] ?? ($default ?? $key);
 }
 
 /**
